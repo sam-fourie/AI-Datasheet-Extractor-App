@@ -11,6 +11,7 @@ import {
   type PackageCategory,
   type PinRow,
 } from "@/lib/package-categories";
+import { PdfSourceError, readPdfFromUrl } from "@/lib/pdf-source";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -60,14 +61,6 @@ function ensurePdfSize(bytes: Uint8Array) {
   }
 }
 
-function buildFileNameFromUrl(url: URL) {
-  const lastPathSegment = url.pathname.split("/").filter(Boolean).at(-1);
-
-  return lastPathSegment && lastPathSegment.toLowerCase().endsWith(".pdf")
-    ? lastPathSegment
-    : "datasheet.pdf";
-}
-
 async function readUploadedPdf(formData: FormData) {
   const uploadedFile = formData.get("datasheetFile");
 
@@ -94,43 +87,6 @@ async function readUploadedPdf(formData: FormData) {
     pdfBytes,
     pdfFileName: uploadedFile.name || "datasheet.pdf",
     sourceLabel: uploadedFile.name || "Uploaded PDF",
-  };
-}
-
-async function readPdfFromUrl(formData: FormData) {
-  const datasheetUrl = getStringValue(formData, "datasheetUrl");
-  let parsedUrl: URL;
-
-  try {
-    parsedUrl = new URL(datasheetUrl);
-  } catch {
-    throw new RouteError("Datasheet URL must be a valid absolute URL.", 400);
-  }
-
-  const response = await fetch(parsedUrl, {
-    headers: {
-      accept: "application/pdf",
-    },
-    cache: "no-store",
-    signal: AbortSignal.timeout(30_000),
-  });
-
-  if (!response.ok) {
-    throw new RouteError("Could not fetch the PDF URL.", 400);
-  }
-
-  const pdfBytes = new Uint8Array(await response.arrayBuffer());
-
-  ensurePdfSize(pdfBytes);
-
-  if (!looksLikePdf(pdfBytes)) {
-    throw new RouteError("The fetched URL did not return a valid PDF.", 400);
-  }
-
-  return {
-    pdfBytes,
-    pdfFileName: buildFileNameFromUrl(parsedUrl),
-    sourceLabel: datasheetUrl,
   };
 }
 
@@ -165,8 +121,8 @@ function toRouteError(error: unknown) {
     return error;
   }
 
-  if (error instanceof Error && error.name === "AbortError") {
-    return new RouteError("Timed out while fetching the datasheet URL.", 408);
+  if (error instanceof PdfSourceError) {
+    return error;
   }
 
   if (error instanceof Error) {
@@ -196,7 +152,7 @@ export async function POST(request: Request) {
     const pdfSource =
       sourceMode === "upload"
         ? await readUploadedPdf(formData)
-        : await readPdfFromUrl(formData);
+        : await readPdfFromUrl(getStringValue(formData, "datasheetUrl"));
 
     const extraction = await extractDatasheet({
       packageCategory: packageCategoryValue,

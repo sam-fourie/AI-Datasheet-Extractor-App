@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 
 import {
   Button,
@@ -33,6 +39,19 @@ const sourceModes: Array<{
     label: "PDF URL",
   },
 ];
+
+const URL_VALIDATION_DEBOUNCE_MS = 500;
+const INVALID_PDF_URL_MESSAGE = "Datasheet URL must be a valid absolute URL.";
+const IDLE_PDF_URL_MESSAGE =
+  "Awaiting PDF validation. Enter a URL to check that it returns a PDF.";
+
+type UrlValidationStatus = "checking" | "idle" | "invalid" | "valid";
+
+type UrlValidationState = {
+  checkedUrl: string | null;
+  message: string | null;
+  status: UrlValidationStatus;
+};
 
 function formatFileSize(bytes: number) {
   if (bytes >= 1024 * 1024) {
@@ -106,6 +125,96 @@ function getFieldStatusTone(status: MeasurementFieldStatus): SemanticTone {
   return "danger";
 }
 
+function createIdleUrlValidationState(): UrlValidationState {
+  return {
+    checkedUrl: null,
+    message: null,
+    status: "idle",
+  };
+}
+
+function isAbsoluteHttpUrl(value: string) {
+  try {
+    const url = new URL(value);
+
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function getUrlValidationTextClassName(status: UrlValidationStatus) {
+  if (status === "checking") {
+    return "text-accent";
+  }
+
+  if (status === "valid") {
+    return "text-success-strong";
+  }
+
+  if (status === "invalid") {
+    return "text-danger-strong";
+  }
+
+  return "text-text-muted";
+}
+
+function getUrlValidationAdornment(status: UrlValidationStatus) {
+  if (status === "checking") {
+    return (
+      <span
+        aria-hidden="true"
+        className="size-5 animate-spin rounded-full border-2 border-border-strong border-t-accent"
+      />
+    );
+  }
+
+  if (status === "valid") {
+    return (
+      <span
+        aria-hidden="true"
+        className="inline-flex size-5 items-center justify-center rounded-full bg-success-soft text-success-strong"
+      >
+        <svg
+          className="size-3.5"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+          viewBox="0 0 16 16"
+        >
+          <path d="m3.5 8.25 3 3 6-6" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (status === "invalid") {
+    return (
+      <span
+        aria-hidden="true"
+        className="inline-flex size-5 items-center justify-center rounded-full bg-danger-soft text-danger-strong"
+      >
+        <svg
+          className="size-3.5"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+          viewBox="0 0 16 16"
+        >
+          <path d="M4.5 4.5 11.5 11.5" />
+          <path d="M11.5 4.5 4.5 11.5" />
+        </svg>
+      </span>
+    );
+  }
+
+  return undefined;
+}
+
 export function DatasheetIntakeWorkbench() {
   const [sourceMode, setSourceMode] = useState<SourceMode>("upload");
   const [selectedCategory, setSelectedCategory] = useState<PackageCategory | "">(
@@ -118,12 +227,23 @@ export function DatasheetIntakeWorkbench() {
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [submissionResult, setSubmissionResult] =
     useState<DatasheetExtractionResponse | null>(null);
+  const [urlValidation, setUrlValidation] = useState<UrlValidationState>(
+    createIdleUrlValidationState,
+  );
+  const urlValidationAbortControllerRef = useRef<AbortController | null>(null);
+  const urlValidationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
+  const trimmedPdfUrl = pdfUrl.trim();
   const previewFields = selectedCategory
     ? PACKAGE_CATEGORY_FIELDS[selectedCategory]
     : [];
+  const hasValidatedPdfUrl =
+    urlValidation.status === "valid" &&
+    urlValidation.checkedUrl === trimmedPdfUrl;
   const hasActiveSource =
-    sourceMode === "upload" ? selectedFile !== null : pdfUrl.trim().length > 0;
+    sourceMode === "upload" ? selectedFile !== null : hasValidatedPdfUrl;
   const canSubmit =
     Boolean(selectedCategory) &&
     partNumber.trim().length > 0 &&
@@ -136,11 +256,134 @@ export function DatasheetIntakeWorkbench() {
       : submissionResult
         ? "Extraction complete"
         : "";
+  const urlValidationAdornment =
+    sourceMode === "url"
+      ? getUrlValidationAdornment(urlValidation.status)
+      : undefined;
+  const urlValidationMessage =
+    sourceMode === "url"
+      ? urlValidation.message ?? IDLE_PDF_URL_MESSAGE
+      : null;
+  const urlValidationHint =
+    sourceMode === "url" && urlValidationMessage ? (
+      <span
+        aria-live="polite"
+        className={[
+          "font-medium",
+          getUrlValidationTextClassName(urlValidation.status),
+        ].join(" ")}
+      >
+        {urlValidationMessage}
+      </span>
+    ) : undefined;
+
+  const cancelUrlValidation = useCallback(() => {
+    if (urlValidationTimerRef.current !== null) {
+      clearTimeout(urlValidationTimerRef.current);
+      urlValidationTimerRef.current = null;
+    }
+
+    if (urlValidationAbortControllerRef.current) {
+      urlValidationAbortControllerRef.current.abort();
+      urlValidationAbortControllerRef.current = null;
+    }
+  }, []);
+
+  const validatePdfUrl = useCallback(async (nextUrl: string) => {
+    cancelUrlValidation();
+
+    const abortController = new AbortController();
+
+    urlValidationAbortControllerRef.current = abortController;
+    setUrlValidation({
+      checkedUrl: nextUrl,
+      message: "Checking URL...",
+      status: "checking",
+    });
+
+    try {
+      const response = await fetch("/api/pdf-url-validation", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          datasheetUrl: nextUrl,
+        }),
+        signal: abortController.signal,
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string; ok?: boolean }
+        | null;
+
+      if (urlValidationAbortControllerRef.current !== abortController) {
+        return;
+      }
+
+      if (!response.ok) {
+        setUrlValidation({
+          checkedUrl: nextUrl,
+          message: payload?.error || "Could not fetch the PDF URL.",
+          status: "invalid",
+        });
+        return;
+      }
+
+      setUrlValidation({
+        checkedUrl: nextUrl,
+        message: "URL is good",
+        status: "valid",
+      });
+    } catch (error) {
+      if (abortController.signal.aborted) {
+        return;
+      }
+
+      if (urlValidationAbortControllerRef.current !== abortController) {
+        return;
+      }
+
+      setUrlValidation({
+        checkedUrl: nextUrl,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Could not fetch the PDF URL.",
+        status: "invalid",
+      });
+    } finally {
+      if (urlValidationAbortControllerRef.current === abortController) {
+        urlValidationAbortControllerRef.current = null;
+      }
+    }
+  }, [cancelUrlValidation]);
+
+  useEffect(() => {
+    if (
+      sourceMode !== "url" ||
+      trimmedPdfUrl.length === 0 ||
+      !isAbsoluteHttpUrl(trimmedPdfUrl)
+    ) {
+      cancelUrlValidation();
+      return;
+    }
+
+    urlValidationTimerRef.current = setTimeout(() => {
+      urlValidationTimerRef.current = null;
+      void validatePdfUrl(trimmedPdfUrl);
+    }, URL_VALIDATION_DEBOUNCE_MS);
+
+    return () => {
+      cancelUrlValidation();
+    };
+  }, [cancelUrlValidation, sourceMode, trimmedPdfUrl, validatePdfUrl]);
 
   function handleSourceModeChange(nextMode: SourceMode) {
+    cancelUrlValidation();
     setSourceMode(nextMode);
     setSubmissionError(null);
     setSubmissionResult(null);
+    setUrlValidation(createIdleUrlValidationState());
 
     if (nextMode === "url") {
       setSelectedFile(null);
@@ -149,12 +392,54 @@ export function DatasheetIntakeWorkbench() {
     }
   }
 
+  function handlePdfUrlBlur() {
+    if (sourceMode !== "url" || trimmedPdfUrl.length === 0) {
+      return;
+    }
+
+    if (!isAbsoluteHttpUrl(trimmedPdfUrl)) {
+      setUrlValidation({
+        checkedUrl: trimmedPdfUrl,
+        message: INVALID_PDF_URL_MESSAGE,
+        status: "invalid",
+      });
+      return;
+    }
+
+    if (urlValidation.checkedUrl === trimmedPdfUrl) {
+      return;
+    }
+
+    void validatePdfUrl(trimmedPdfUrl);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const form = event.currentTarget;
 
     if (!form.reportValidity() || !selectedCategory) {
+      return;
+    }
+
+    if (sourceMode === "url" && !hasValidatedPdfUrl) {
+      if (trimmedPdfUrl.length === 0) {
+        return;
+      }
+
+      if (!isAbsoluteHttpUrl(trimmedPdfUrl)) {
+        setUrlValidation({
+          checkedUrl: trimmedPdfUrl,
+          message: INVALID_PDF_URL_MESSAGE,
+          status: "invalid",
+        });
+        return;
+      }
+
+      if (urlValidation.checkedUrl !== trimmedPdfUrl) {
+        void validatePdfUrl(trimmedPdfUrl);
+      }
+
       return;
     }
 
@@ -223,7 +508,7 @@ export function DatasheetIntakeWorkbench() {
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div className="space-y-3">
               <p className="text-sm font-medium text-text">PDF source</p>
-              <div className="inline-flex w-full flex-col gap-2 rounded-panel border border-border bg-surface-muted p-1.5 sm:w-auto sm:flex-row sm:gap-1.5">
+              <div className="flex w-full flex-col gap-2 rounded-panel border border-border bg-surface-muted p-1.5 sm:flex-row sm:gap-1.5">
                 {sourceModes.map((option) => {
                   const isActive = option.value === sourceMode;
 
@@ -232,7 +517,7 @@ export function DatasheetIntakeWorkbench() {
                       key={option.value}
                       aria-pressed={isActive}
                       className={[
-                        "rounded-pill px-5 py-3 text-center text-sm font-medium transition duration-150 ease-out disabled:pointer-events-none disabled:opacity-60 sm:min-w-40",
+                        "flex-1 rounded-pill px-5 py-3 text-center text-sm font-medium transition duration-150 ease-out disabled:pointer-events-none disabled:opacity-60",
                         isActive
                           ? "bg-surface text-text shadow-soft"
                           : "text-text-muted hover:text-text",
@@ -264,16 +549,51 @@ export function DatasheetIntakeWorkbench() {
                 />
               </Field>
             ) : (
-              <Field htmlFor="datasheet-url" label="Datasheet PDF URL" required>
+              <Field
+                hint={urlValidationHint}
+                htmlFor="datasheet-url"
+                label="Datasheet PDF URL"
+                required
+              >
                 <TextField
                   disabled={isSubmitting}
+                  endAdornment={urlValidationAdornment}
                   id="datasheet-url"
+                  invalid={urlValidation.status === "invalid"}
                   inputMode="url"
                   name="datasheetUrl"
+                  onBlur={handlePdfUrlBlur}
                   onChange={(event) => {
                     setSubmissionError(null);
-                    setPdfUrl(event.currentTarget.value);
                     setSubmissionResult(null);
+
+                    const nextValue = event.currentTarget.value;
+                    const nextTrimmedPdfUrl = nextValue.trim();
+
+                    if (nextTrimmedPdfUrl !== trimmedPdfUrl) {
+                      cancelUrlValidation();
+                    }
+
+                    setPdfUrl(nextValue);
+                    setUrlValidation((current) => {
+                      if (nextTrimmedPdfUrl.length === 0) {
+                        return createIdleUrlValidationState();
+                      }
+
+                      if (!isAbsoluteHttpUrl(nextTrimmedPdfUrl)) {
+                        return {
+                          checkedUrl: nextTrimmedPdfUrl,
+                          message: INVALID_PDF_URL_MESSAGE,
+                          status: "invalid",
+                        };
+                      }
+
+                      if (current.checkedUrl === nextTrimmedPdfUrl) {
+                        return current;
+                      }
+
+                      return createIdleUrlValidationState();
+                    });
                   }}
                   placeholder="https://vendor.example.com/datasheet.pdf"
                   required
@@ -332,11 +652,8 @@ export function DatasheetIntakeWorkbench() {
               </SelectField>
             </Field>
 
-            <div className="flex flex-col gap-3 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm font-medium text-text">
-                Ready to submit the extraction request
-              </p>
-              <Button disabled={!canSubmit} size="lg" type="submit">
+            <div className="border-t border-border pt-6">
+              <Button className="w-full" disabled={!canSubmit} size="lg" type="submit">
                 {isSubmitting ? (
                   <span className="inline-flex items-center gap-2">
                     <span
