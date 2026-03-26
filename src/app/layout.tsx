@@ -4,7 +4,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "AI Datasheet Extractor",
-  description: "Shared Apple-style UI foundation for the AI Datasheet Extractor app.",
+  description:
+    "Stage datasheet PDF extraction requests with package-aware UI and preview the output structure before the AI backend is wired in.",
 };
 
 export default function RootLayout({

@@ -1,0 +1,549 @@
+"use client";
+
+import { useState, type FormEvent } from "react";
+
+import {
+  Button,
+  Card,
+  Field,
+  FileField,
+  SelectField,
+  TextField,
+} from "@/components/ui";
+import {
+  PACKAGE_CATEGORY_FIELDS,
+  packageCategories,
+  type DatasheetExtractionResponse,
+  type PackageCategory,
+  type SourceMode,
+} from "@/lib/package-categories";
+
+const sourceModes: Array<{
+  label: string;
+  value: SourceMode;
+}> = [
+  {
+    value: "upload",
+    label: "Upload PDF file",
+  },
+  {
+    value: "url",
+    label: "PDF URL",
+  },
+];
+
+function formatFileSize(bytes: number) {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  if (bytes >= 1024) {
+    return `${Math.round(bytes / 1024)} KB`;
+  }
+
+  return `${bytes} B`;
+}
+
+function formatConfidence(confidence?: string) {
+  if (!confidence) {
+    return "Unknown confidence";
+  }
+
+  return `${confidence.charAt(0).toUpperCase()}${confidence.slice(1)} confidence`;
+}
+
+function formatEvidencePages(evidencePages?: number[]) {
+  if (!evidencePages || evidencePages.length === 0) {
+    return "No page references";
+  }
+
+  return `Pages ${evidencePages.join(", ")}`;
+}
+
+export function DatasheetIntakeWorkbench() {
+  const [sourceMode, setSourceMode] = useState<SourceMode>("upload");
+  const [selectedCategory, setSelectedCategory] = useState<PackageCategory | "">(
+    "",
+  );
+  const [partNumber, setPartNumber] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [pdfUrl, setPdfUrl] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [submissionResult, setSubmissionResult] =
+    useState<DatasheetExtractionResponse | null>(null);
+
+  const previewFields = selectedCategory
+    ? PACKAGE_CATEGORY_FIELDS[selectedCategory]
+    : [];
+  const hasActiveSource =
+    sourceMode === "upload" ? selectedFile !== null : pdfUrl.trim().length > 0;
+  const canSubmit =
+    Boolean(selectedCategory) &&
+    partNumber.trim().length > 0 &&
+    hasActiveSource &&
+    !isSubmitting;
+
+  function handleSourceModeChange(nextMode: SourceMode) {
+    setSourceMode(nextMode);
+    setSubmissionError(null);
+    setSubmissionResult(null);
+
+    if (nextMode === "url") {
+      setSelectedFile(null);
+    } else {
+      setPdfUrl("");
+    }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const form = event.currentTarget;
+
+    if (!form.reportValidity() || !selectedCategory) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmissionError(null);
+    setSubmissionResult(null);
+
+    try {
+      const formData = new FormData();
+
+      formData.set("sourceMode", sourceMode);
+      formData.set("partNumber", partNumber.trim());
+      formData.set("packageCategory", selectedCategory);
+
+      if (sourceMode === "upload") {
+        if (!selectedFile) {
+          throw new Error("Please choose a PDF file to upload.");
+        }
+
+        formData.set("datasheetFile", selectedFile);
+      } else {
+        formData.set("datasheetUrl", pdfUrl.trim());
+      }
+
+      const response = await fetch("/api/extractions", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | DatasheetExtractionResponse
+        | { error?: string }
+        | null;
+
+      if (!response.ok) {
+        const errorMessage =
+          payload && "error" in payload
+            ? payload.error || "Extraction request failed."
+            : "Extraction request failed.";
+
+        throw new Error(errorMessage);
+      }
+
+      setSubmissionResult(payload as DatasheetExtractionResponse);
+    } catch (error) {
+      setSubmissionError(
+        error instanceof Error
+          ? error.message
+          : "Unexpected extraction request failure.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+        <Card className="space-y-6">
+          <div className="space-y-1">
+            <p className="text-sm font-medium uppercase tracking-[0.16em] text-text-muted">
+              Intake Workbench
+            </p>
+            <h2 className="text-3xl">Prepare a datasheet extraction request</h2>
+          </div>
+
+          <form className="space-y-6" onSubmit={handleSubmit}>
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-text">PDF source</p>
+              <div className="inline-flex w-full flex-col gap-2 rounded-panel border border-border bg-surface-muted p-1.5 sm:w-auto sm:flex-row sm:gap-1.5">
+                {sourceModes.map((option) => {
+                  const isActive = option.value === sourceMode;
+
+                  return (
+                    <button
+                      key={option.value}
+                      aria-pressed={isActive}
+                      className={[
+                        "rounded-pill px-5 py-3 text-center text-sm font-medium transition duration-150 ease-out disabled:pointer-events-none disabled:opacity-60 sm:min-w-40",
+                        isActive
+                          ? "bg-surface text-text shadow-soft"
+                          : "text-text-muted hover:text-text",
+                      ].join(" ")}
+                      disabled={isSubmitting}
+                      onClick={() => handleSourceModeChange(option.value)}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {sourceMode === "upload" ? (
+              <Field htmlFor="datasheet-file" label="Upload datasheet PDF" required>
+                <FileField
+                  accept=".pdf,application/pdf"
+                  disabled={isSubmitting}
+                  id="datasheet-file"
+                  name="datasheetFile"
+                  onChange={(event) => {
+                    setSubmissionError(null);
+                    setSelectedFile(event.currentTarget.files?.[0] ?? null);
+                    setSubmissionResult(null);
+                  }}
+                  required
+                />
+              </Field>
+            ) : (
+              <Field htmlFor="datasheet-url" label="Datasheet PDF URL" required>
+                <TextField
+                  disabled={isSubmitting}
+                  id="datasheet-url"
+                  inputMode="url"
+                  name="datasheetUrl"
+                  onChange={(event) => {
+                    setSubmissionError(null);
+                    setPdfUrl(event.currentTarget.value);
+                    setSubmissionResult(null);
+                  }}
+                  placeholder="https://vendor.example.com/datasheet.pdf"
+                  required
+                  type="url"
+                  value={pdfUrl}
+                />
+              </Field>
+            )}
+
+            {sourceMode === "upload" && selectedFile ? (
+              <div className="rounded-control border border-border bg-surface-muted px-4 py-3 text-sm text-text-muted">
+                Selected file:{" "}
+                <span className="font-medium text-text">{selectedFile.name}</span>
+                <span className="mx-2 text-border-strong">·</span>
+                {formatFileSize(selectedFile.size)}
+              </div>
+            ) : null}
+
+            <Field htmlFor="part-number" label="Part number" required>
+              <TextField
+                disabled={isSubmitting}
+                id="part-number"
+                name="partNumber"
+                onChange={(event) => {
+                  setSubmissionError(null);
+                  setPartNumber(event.currentTarget.value);
+                  setSubmissionResult(null);
+                }}
+                placeholder="STM32F103C8T6"
+                required
+                value={partNumber}
+              />
+            </Field>
+
+            <Field htmlFor="package-category" label="Package category" required>
+              <SelectField
+                disabled={isSubmitting}
+                id="package-category"
+                name="packageCategory"
+                onChange={(event) => {
+                  setSubmissionError(null);
+                  setSelectedCategory(
+                    event.currentTarget.value as PackageCategory | "",
+                  );
+                  setSubmissionResult(null);
+                }}
+                required
+                value={selectedCategory}
+              >
+                <option value="">Choose a package category</option>
+                {packageCategories.map((packageCategory) => (
+                  <option key={packageCategory} value={packageCategory}>
+                    {packageCategory}
+                  </option>
+                ))}
+              </SelectField>
+            </Field>
+
+            <div className="flex flex-col gap-3 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm font-medium text-text">
+                Ready to submit the extraction request
+              </p>
+              <Button disabled={!canSubmit} size="lg" type="submit">
+                {isSubmitting ? "Submitting to AI..." : "Submit for extraction"}
+              </Button>
+            </div>
+
+            <p aria-live="polite" className="text-sm leading-6 text-text-muted">
+              {isSubmitting
+                ? "Submitting the datasheet PDF to OpenAI."
+                : submissionError
+                  ? submissionError
+                  : "Upload a datasheet PDF or provide a PDF URL to run live extraction."}
+            </p>
+
+            {submissionError ? (
+              <div className="rounded-control border border-border-strong bg-surface-muted px-4 py-3 text-sm leading-6 text-text">
+                {submissionError}
+              </div>
+            ) : null}
+          </form>
+        </Card>
+
+        <div>
+          <Card className="space-y-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-2">
+                <p className="text-sm font-medium uppercase tracking-[0.16em] text-text-muted">
+                  Fields To Extract
+                </p>
+                <h3 className="text-2xl">
+                  {selectedCategory || "Choose a package category"}
+                </h3>
+              </div>
+              <div className="rounded-pill border border-border bg-surface-muted px-3 py-1.5 text-xs font-medium text-text-muted">
+                {previewFields.length} fields
+              </div>
+            </div>
+
+            {previewFields.length > 0 ? (
+              <div className="grid gap-3">
+                {previewFields.map((field, index) => (
+                  <div
+                    key={field}
+                    className="flex items-center justify-between rounded-control border border-border bg-surface-muted px-4 py-3"
+                  >
+                    <span className="text-sm font-medium text-text">{field}</span>
+                    <span className="text-xs uppercase tracking-[0.16em] text-text-muted">
+                      Field {index + 1}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-control border border-dashed border-border-strong bg-surface-muted px-4 py-5 text-sm leading-6 text-text-muted">
+                Select a package category to list the exact dimensions and
+                metadata this workflow will request from the AI step.
+              </div>
+            )}
+          </Card>
+        </div>
+      </div>
+
+      {submissionResult ? (
+        <Card className="space-y-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-2">
+              <p className="text-sm font-medium uppercase tracking-[0.16em] text-text-muted">
+                Extraction Result
+              </p>
+              <h2 className="text-3xl">Live extraction output</h2>
+              <p className="max-w-2xl text-sm leading-6 text-text-muted">
+                {submissionResult.review.needsReview
+                  ? "OpenAI returned a best guess. Review the selected package and any low-confidence notes before trusting the output."
+                  : "OpenAI returned a structured extraction for the submitted datasheet."}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="rounded-pill border border-border bg-surface-muted px-4 py-2 text-sm font-medium text-text-muted">
+                {submissionResult.review.needsReview
+                  ? "Needs review"
+                  : "Extraction complete"}
+              </div>
+              <div className="rounded-pill border border-border bg-surface-muted px-4 py-2 text-sm font-medium text-text-muted">
+                {submissionResult.providerMeta.model}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-control border border-border bg-surface-muted p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                Part Number
+              </p>
+              <p className="mt-2 break-all text-sm font-medium text-text">
+                {submissionResult.partNumber}
+              </p>
+            </div>
+            <div className="rounded-control border border-border bg-surface-muted p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                Source Mode
+              </p>
+              <p className="mt-2 text-sm font-medium text-text">
+                {submissionResult.sourceMode === "upload"
+                  ? "Uploaded PDF"
+                  : "PDF URL"}
+              </p>
+            </div>
+            <div className="rounded-control border border-border bg-surface-muted p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                Package Category
+              </p>
+              <p className="mt-2 text-sm font-medium text-text">
+                {submissionResult.packageCategory}
+              </p>
+            </div>
+            <div className="rounded-control border border-border bg-surface-muted p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                Package Match
+              </p>
+              <p className="mt-2 break-all text-sm font-medium text-text">
+                {submissionResult.packageSelection.selectedPackage}
+              </p>
+              <p className="mt-2 text-xs leading-5 text-text-muted">
+                {formatConfidence(submissionResult.packageSelection.confidence)}
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-control border border-border bg-surface-muted p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                  Review Notes
+                </p>
+                <p className="text-sm font-medium text-text">
+                  {submissionResult.review.needsReview
+                    ? "Manual review recommended for this extraction."
+                    : "No review flags were returned by the model."}
+                </p>
+              </div>
+              <div className="rounded-pill border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text-muted">
+                {formatConfidence(submissionResult.packageSelection.confidence)}
+              </div>
+            </div>
+
+            {submissionResult.review.notes.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {submissionResult.review.notes.map((note) => (
+                  <p key={note} className="text-sm leading-6 text-text-muted">
+                    {note}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+
+            {submissionResult.packageSelection.alternatives.length > 0 ? (
+              <p className="mt-3 text-sm leading-6 text-text-muted">
+                Alternatives considered:{" "}
+                {submissionResult.packageSelection.alternatives.join(", ")}
+              </p>
+            ) : null}
+
+            <p className="mt-3 break-all text-sm leading-6 text-text-muted">
+              Source summary: {submissionResult.sourceLabel}
+            </p>
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-4">
+                <h3 className="text-2xl">Measurements</h3>
+                <span className="rounded-pill border border-border bg-surface-muted px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-text-muted">
+                  {submissionResult.fields.length} extracted fields
+                </span>
+              </div>
+              <div className="overflow-hidden rounded-panel border border-border">
+                <table className="w-full border-collapse text-left">
+                  <thead className="bg-surface-muted text-xs uppercase tracking-[0.18em] text-text-muted">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Field</th>
+                      <th className="px-4 py-3 font-medium">Status</th>
+                      <th className="px-4 py-3 font-medium">Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {submissionResult.fields.map((field) => (
+                      <tr key={field.field} className="border-t border-border">
+                        <td className="px-4 py-3 text-sm font-medium text-text">
+                          {field.field}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-text-muted align-top">
+                          <span className="inline-flex rounded-pill border border-border bg-surface-muted px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-text-muted">
+                            {field.status}
+                          </span>
+                          <p className="mt-2 text-xs leading-5 text-text-muted">
+                            {formatConfidence(field.confidence)}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-text-muted align-top">
+                          <p className="text-text">{field.value}</p>
+                          <p className="mt-2 text-xs leading-5 text-text-muted">
+                            {formatEvidencePages(field.evidencePages)}
+                          </p>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-4">
+                <h3 className="text-2xl">Pins</h3>
+                <span className="rounded-pill border border-border bg-surface-muted px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-text-muted">
+                  {submissionResult.pinRows.length} extracted pins
+                </span>
+              </div>
+              <div className="overflow-hidden rounded-panel border border-border">
+                <table className="w-full border-collapse text-left">
+                  <thead className="bg-surface-muted text-xs uppercase tracking-[0.18em] text-text-muted">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Pin Number</th>
+                      <th className="px-4 py-3 font-medium">Pin Name</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {submissionResult.pinRows.length > 0 ? (
+                      submissionResult.pinRows.map((pinRow) => (
+                        <tr
+                          key={`${pinRow.pinNumber}-${pinRow.pinName}`}
+                          className="border-t border-border"
+                        >
+                          <td className="px-4 py-3 text-sm font-medium text-text">
+                            {pinRow.pinNumber}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-text-muted align-top">
+                            <p className="font-medium text-text">{pinRow.pinName}</p>
+                            <p className="mt-2 text-xs leading-5 text-text-muted">
+                              {formatConfidence(pinRow.confidence)} ·{" "}
+                              {formatEvidencePages(pinRow.evidencePages)}
+                            </p>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr className="border-t border-border">
+                        <td
+                          className="px-4 py-6 text-sm leading-6 text-text-muted"
+                          colSpan={2}
+                        >
+                          No pin rows were extracted from this datasheet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
