@@ -537,11 +537,13 @@ export type PackageCategory = keyof typeof PACKAGE_CATEGORY_FIELDS;
 
 export type ConfidenceLevel = "high" | "medium" | "low";
 
+export type MeasurementFieldStatus = "Extracted" | "Needs review" | "Not found";
+
 export type MeasurementFieldRow = {
   confidence?: ConfidenceLevel;
   evidencePages?: number[];
   field: string;
-  status: string;
+  status: MeasurementFieldStatus;
   value: string;
 };
 

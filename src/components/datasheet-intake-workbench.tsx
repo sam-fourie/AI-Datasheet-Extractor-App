@@ -12,8 +12,10 @@ import {
 } from "@/components/ui";
 import {
   PACKAGE_CATEGORY_FIELDS,
+  type ConfidenceLevel,
   packageCategories,
   type DatasheetExtractionResponse,
+  type MeasurementFieldStatus,
   type PackageCategory,
   type SourceMode,
 } from "@/lib/package-categories";
@@ -44,7 +46,23 @@ function formatFileSize(bytes: number) {
   return `${bytes} B`;
 }
 
-function formatConfidence(confidence?: string) {
+type SemanticTone = "danger" | "neutral" | "success" | "warning";
+
+const badgeToneClassNames: Record<SemanticTone, string> = {
+  success: "border-success-ring bg-success-soft text-success-strong",
+  warning: "border-warning-ring bg-warning-soft text-warning-strong",
+  danger: "border-danger-ring bg-danger-soft text-danger-strong",
+  neutral: "border-border bg-surface-muted text-text-muted",
+};
+
+const textToneClassNames: Record<SemanticTone, string> = {
+  success: "text-success-strong",
+  warning: "text-warning-strong",
+  danger: "text-danger-strong",
+  neutral: "text-text-muted",
+};
+
+function formatConfidence(confidence?: ConfidenceLevel) {
   if (!confidence) {
     return "Unknown confidence";
   }
@@ -58,6 +76,34 @@ function formatEvidencePages(evidencePages?: number[]) {
   }
 
   return `Pages ${evidencePages.join(", ")}`;
+}
+
+function getConfidenceTone(confidence?: ConfidenceLevel): SemanticTone {
+  if (confidence === "high") {
+    return "success";
+  }
+
+  if (confidence === "medium") {
+    return "warning";
+  }
+
+  if (confidence === "low") {
+    return "danger";
+  }
+
+  return "neutral";
+}
+
+function getFieldStatusTone(status: MeasurementFieldStatus): SemanticTone {
+  if (status === "Extracted") {
+    return "success";
+  }
+
+  if (status === "Needs review") {
+    return "warning";
+  }
+
+  return "danger";
 }
 
 export function DatasheetIntakeWorkbench() {
@@ -83,6 +129,13 @@ export function DatasheetIntakeWorkbench() {
     partNumber.trim().length > 0 &&
     hasActiveSource &&
     !isSubmitting;
+  const liveRegionMessage = isSubmitting
+    ? "Submitting to AI for extraction..."
+    : submissionError
+      ? submissionError
+      : submissionResult
+        ? "Extraction complete"
+        : "";
 
   function handleSourceModeChange(nextMode: SourceMode) {
     setSourceMode(nextMode);
@@ -284,16 +337,22 @@ export function DatasheetIntakeWorkbench() {
                 Ready to submit the extraction request
               </p>
               <Button disabled={!canSubmit} size="lg" type="submit">
-                {isSubmitting ? "Submitting to AI..." : "Submit for extraction"}
+                {isSubmitting ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span
+                      aria-hidden="true"
+                      className="size-4 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                    />
+                    Submitting to AI for extraction...
+                  </span>
+                ) : (
+                  "Submit for extraction"
+                )}
               </Button>
             </div>
 
-            <p aria-live="polite" className="text-sm leading-6 text-text-muted">
-              {isSubmitting
-                ? "Submitting the datasheet PDF to OpenAI."
-                : submissionError
-                  ? submissionError
-                  : "Upload a datasheet PDF or provide a PDF URL to run live extraction."}
+            <p aria-live="polite" className="sr-only">
+              {liveRegionMessage}
             </p>
 
             {submissionError ? (
@@ -359,7 +418,14 @@ export function DatasheetIntakeWorkbench() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <div className="rounded-pill border border-border bg-surface-muted px-4 py-2 text-sm font-medium text-text-muted">
+              <div
+                className={[
+                  "rounded-pill border px-4 py-2 text-sm font-medium",
+                  badgeToneClassNames[
+                    submissionResult.review.needsReview ? "warning" : "success"
+                  ],
+                ].join(" ")}
+              >
                 {submissionResult.review.needsReview
                   ? "Needs review"
                   : "Extraction complete"}
@@ -404,7 +470,16 @@ export function DatasheetIntakeWorkbench() {
               <p className="mt-2 break-all text-sm font-medium text-text">
                 {submissionResult.packageSelection.selectedPackage}
               </p>
-              <p className="mt-2 text-xs leading-5 text-text-muted">
+              <p
+                className={[
+                  "mt-2 text-xs leading-5 font-medium",
+                  textToneClassNames[
+                    getConfidenceTone(
+                      submissionResult.packageSelection.confidence,
+                    )
+                  ],
+                ].join(" ")}
+              >
                 {formatConfidence(submissionResult.packageSelection.confidence)}
               </p>
             </div>
@@ -422,7 +497,16 @@ export function DatasheetIntakeWorkbench() {
                     : "No review flags were returned by the model."}
                 </p>
               </div>
-              <div className="rounded-pill border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text-muted">
+              <div
+                className={[
+                  "rounded-pill border px-3 py-1.5 text-xs font-medium",
+                  badgeToneClassNames[
+                    getConfidenceTone(
+                      submissionResult.packageSelection.confidence,
+                    )
+                  ],
+                ].join(" ")}
+              >
                 {formatConfidence(submissionResult.packageSelection.confidence)}
               </div>
             </div>
@@ -467,27 +551,44 @@ export function DatasheetIntakeWorkbench() {
                     </tr>
                   </thead>
                   <tbody>
-                    {submissionResult.fields.map((field) => (
-                      <tr key={field.field} className="border-t border-border">
-                        <td className="px-4 py-3 text-sm font-medium text-text">
-                          {field.field}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-text-muted align-top">
-                          <span className="inline-flex rounded-pill border border-border bg-surface-muted px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-text-muted">
-                            {field.status}
-                          </span>
-                          <p className="mt-2 text-xs leading-5 text-text-muted">
-                            {formatConfidence(field.confidence)}
-                          </p>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-text-muted align-top">
-                          <p className="text-text">{field.value}</p>
-                          <p className="mt-2 text-xs leading-5 text-text-muted">
-                            {formatEvidencePages(field.evidencePages)}
-                          </p>
-                        </td>
-                      </tr>
-                    ))}
+                    {submissionResult.fields.map((field) => {
+                      const fieldStatusTone = getFieldStatusTone(field.status);
+                      const fieldConfidenceTone = getConfidenceTone(
+                        field.confidence,
+                      );
+
+                      return (
+                        <tr key={field.field} className="border-t border-border">
+                          <td className="px-4 py-3 text-sm font-medium text-text">
+                            {field.field}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-text-muted align-top">
+                            <span
+                              className={[
+                                "inline-flex rounded-pill border px-3 py-1 text-xs font-medium uppercase tracking-[0.12em]",
+                                badgeToneClassNames[fieldStatusTone],
+                              ].join(" ")}
+                            >
+                              {field.status}
+                            </span>
+                            <p
+                              className={[
+                                "mt-2 text-xs leading-5 font-medium",
+                                textToneClassNames[fieldConfidenceTone],
+                              ].join(" ")}
+                            >
+                              {formatConfidence(field.confidence)}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-text-muted align-top">
+                            <p className="text-text">{field.value}</p>
+                            <p className="mt-2 text-xs leading-5 text-text-muted">
+                              {formatEvidencePages(field.evidencePages)}
+                            </p>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -510,23 +611,36 @@ export function DatasheetIntakeWorkbench() {
                   </thead>
                   <tbody>
                     {submissionResult.pinRows.length > 0 ? (
-                      submissionResult.pinRows.map((pinRow) => (
-                        <tr
-                          key={`${pinRow.pinNumber}-${pinRow.pinName}`}
-                          className="border-t border-border"
-                        >
-                          <td className="px-4 py-3 text-sm font-medium text-text">
-                            {pinRow.pinNumber}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-text-muted align-top">
-                            <p className="font-medium text-text">{pinRow.pinName}</p>
-                            <p className="mt-2 text-xs leading-5 text-text-muted">
-                              {formatConfidence(pinRow.confidence)} ·{" "}
-                              {formatEvidencePages(pinRow.evidencePages)}
-                            </p>
-                          </td>
-                        </tr>
-                      ))
+                      submissionResult.pinRows.map((pinRow) => {
+                        const pinConfidenceTone = getConfidenceTone(
+                          pinRow.confidence,
+                        );
+
+                        return (
+                          <tr
+                            key={`${pinRow.pinNumber}-${pinRow.pinName}`}
+                            className="border-t border-border"
+                          >
+                            <td className="px-4 py-3 text-sm font-medium text-text">
+                              {pinRow.pinNumber}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-text-muted align-top">
+                              <p className="font-medium text-text">{pinRow.pinName}</p>
+                              <p className="mt-2 text-xs leading-5 text-text-muted">
+                                <span
+                                  className={[
+                                    "font-medium",
+                                    textToneClassNames[pinConfidenceTone],
+                                  ].join(" ")}
+                                >
+                                  {formatConfidence(pinRow.confidence)}
+                                </span>{" "}
+                                · {formatEvidencePages(pinRow.evidencePages)}
+                              </p>
+                            </td>
+                          </tr>
+                        );
+                      })
                     ) : (
                       <tr className="border-t border-border">
                         <td
