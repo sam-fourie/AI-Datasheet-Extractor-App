@@ -39,8 +39,7 @@ const designRules = [
 
 export default function PreviewPage() {
   return (
-    <main className="flex-1">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8 sm:px-8 md:gap-8 md:py-12">
+    <section className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8 sm:px-8 md:gap-8 md:py-12">
         <Card className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-2">
             <p className="text-sm font-medium uppercase tracking-[0.16em] text-text-muted">
@@ -311,7 +310,6 @@ export default function PreviewPage() {
             </Card>
           </div>
         </div>
-      </div>
-    </main>
+    </section>
   );
 }

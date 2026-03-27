@@ -8,6 +8,7 @@ import {
   type FormEvent,
 } from "react";
 
+import { SubmissionReviewEditor } from "@/components/submission-review-editor";
 import {
   Button,
   Card,
@@ -18,13 +19,11 @@ import {
 } from "@/components/ui";
 import {
   PACKAGE_CATEGORY_FIELDS,
-  type ConfidenceLevel,
   packageCategories,
-  type DatasheetExtractionResponse,
-  type MeasurementFieldStatus,
   type PackageCategory,
   type SourceMode,
 } from "@/lib/package-categories";
+import type { SubmissionDetail } from "@/lib/submissions/types";
 
 const sourceModes: Array<{
   label: string;
@@ -63,66 +62,6 @@ function formatFileSize(bytes: number) {
   }
 
   return `${bytes} B`;
-}
-
-type SemanticTone = "danger" | "neutral" | "success" | "warning";
-
-const badgeToneClassNames: Record<SemanticTone, string> = {
-  success: "border-success-ring bg-success-soft text-success-strong",
-  warning: "border-warning-ring bg-warning-soft text-warning-strong",
-  danger: "border-danger-ring bg-danger-soft text-danger-strong",
-  neutral: "border-border bg-surface-muted text-text-muted",
-};
-
-const textToneClassNames: Record<SemanticTone, string> = {
-  success: "text-success-strong",
-  warning: "text-warning-strong",
-  danger: "text-danger-strong",
-  neutral: "text-text-muted",
-};
-
-function formatConfidence(confidence?: ConfidenceLevel) {
-  if (!confidence) {
-    return "Unknown confidence";
-  }
-
-  return `${confidence.charAt(0).toUpperCase()}${confidence.slice(1)} confidence`;
-}
-
-function formatEvidencePages(evidencePages?: number[]) {
-  if (!evidencePages || evidencePages.length === 0) {
-    return "No page references";
-  }
-
-  return `Pages ${evidencePages.join(", ")}`;
-}
-
-function getConfidenceTone(confidence?: ConfidenceLevel): SemanticTone {
-  if (confidence === "high") {
-    return "success";
-  }
-
-  if (confidence === "medium") {
-    return "warning";
-  }
-
-  if (confidence === "low") {
-    return "danger";
-  }
-
-  return "neutral";
-}
-
-function getFieldStatusTone(status: MeasurementFieldStatus): SemanticTone {
-  if (status === "Extracted") {
-    return "success";
-  }
-
-  if (status === "Needs review") {
-    return "warning";
-  }
-
-  return "danger";
 }
 
 function createIdleUrlValidationState(): UrlValidationState {
@@ -225,8 +164,9 @@ export function DatasheetIntakeWorkbench() {
   const [pdfUrl, setPdfUrl] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
-  const [submissionResult, setSubmissionResult] =
-    useState<DatasheetExtractionResponse | null>(null);
+  const [submissionResult, setSubmissionResult] = useState<SubmissionDetail | null>(
+    null,
+  );
   const [urlValidation, setUrlValidation] = useState<UrlValidationState>(
     createIdleUrlValidationState,
   );
@@ -254,7 +194,7 @@ export function DatasheetIntakeWorkbench() {
     : submissionError
       ? submissionError
       : submissionResult
-        ? "Extraction complete"
+        ? "Extraction saved"
         : "";
   const urlValidationAdornment =
     sourceMode === "url"
@@ -289,74 +229,77 @@ export function DatasheetIntakeWorkbench() {
     }
   }, []);
 
-  const validatePdfUrl = useCallback(async (nextUrl: string) => {
-    cancelUrlValidation();
+  const validatePdfUrl = useCallback(
+    async (nextUrl: string) => {
+      cancelUrlValidation();
 
-    const abortController = new AbortController();
+      const abortController = new AbortController();
 
-    urlValidationAbortControllerRef.current = abortController;
-    setUrlValidation({
-      checkedUrl: nextUrl,
-      message: "Checking URL...",
-      status: "checking",
-    });
-
-    try {
-      const response = await fetch("/api/pdf-url-validation", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          datasheetUrl: nextUrl,
-        }),
-        signal: abortController.signal,
+      urlValidationAbortControllerRef.current = abortController;
+      setUrlValidation({
+        checkedUrl: nextUrl,
+        message: "Checking URL...",
+        status: "checking",
       });
-      const payload = (await response.json().catch(() => null)) as
-        | { error?: string; ok?: boolean }
-        | null;
 
-      if (urlValidationAbortControllerRef.current !== abortController) {
-        return;
-      }
+      try {
+        const response = await fetch("/api/pdf-url-validation", {
+          body: JSON.stringify({
+            datasheetUrl: nextUrl,
+          }),
+          headers: {
+            "content-type": "application/json",
+          },
+          method: "POST",
+          signal: abortController.signal,
+        });
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: string; ok?: boolean }
+          | null;
 
-      if (!response.ok) {
+        if (urlValidationAbortControllerRef.current !== abortController) {
+          return;
+        }
+
+        if (!response.ok) {
+          setUrlValidation({
+            checkedUrl: nextUrl,
+            message: payload?.error || "Could not fetch the PDF URL.",
+            status: "invalid",
+          });
+          return;
+        }
+
         setUrlValidation({
           checkedUrl: nextUrl,
-          message: payload?.error || "Could not fetch the PDF URL.",
+          message: "URL is good",
+          status: "valid",
+        });
+      } catch (error) {
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        if (urlValidationAbortControllerRef.current !== abortController) {
+          return;
+        }
+
+        setUrlValidation({
+          checkedUrl: nextUrl,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Could not fetch the PDF URL.",
           status: "invalid",
         });
-        return;
+      } finally {
+        if (urlValidationAbortControllerRef.current === abortController) {
+          urlValidationAbortControllerRef.current = null;
+        }
       }
-
-      setUrlValidation({
-        checkedUrl: nextUrl,
-        message: "URL is good",
-        status: "valid",
-      });
-    } catch (error) {
-      if (abortController.signal.aborted) {
-        return;
-      }
-
-      if (urlValidationAbortControllerRef.current !== abortController) {
-        return;
-      }
-
-      setUrlValidation({
-        checkedUrl: nextUrl,
-        message:
-          error instanceof Error
-            ? error.message
-            : "Could not fetch the PDF URL.",
-        status: "invalid",
-      });
-    } finally {
-      if (urlValidationAbortControllerRef.current === abortController) {
-        urlValidationAbortControllerRef.current = null;
-      }
-    }
-  }, [cancelUrlValidation]);
+    },
+    [cancelUrlValidation],
+  );
 
   useEffect(() => {
     if (
@@ -465,11 +408,11 @@ export function DatasheetIntakeWorkbench() {
       }
 
       const response = await fetch("/api/extractions", {
-        method: "POST",
         body: formData,
+        method: "POST",
       });
       const payload = (await response.json().catch(() => null)) as
-        | DatasheetExtractionResponse
+        | SubmissionDetail
         | { error?: string }
         | null;
 
@@ -482,7 +425,7 @@ export function DatasheetIntakeWorkbench() {
         throw new Error(errorMessage);
       }
 
-      setSubmissionResult(payload as DatasheetExtractionResponse);
+      setSubmissionResult(payload as SubmissionDetail);
     } catch (error) {
       setSubmissionError(
         error instanceof Error
@@ -721,259 +664,7 @@ export function DatasheetIntakeWorkbench() {
       </div>
 
       {submissionResult ? (
-        <Card className="space-y-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="space-y-2">
-              <p className="text-sm font-medium uppercase tracking-[0.16em] text-text-muted">
-                Extraction Result
-              </p>
-              <h2 className="text-3xl">Live extraction output</h2>
-              <p className="max-w-2xl text-sm leading-6 text-text-muted">
-                {submissionResult.review.needsReview
-                  ? "OpenAI returned a best guess. Review the selected package and any low-confidence notes before trusting the output."
-                  : "OpenAI returned a structured extraction for the submitted datasheet."}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div
-                className={[
-                  "rounded-pill border px-4 py-2 text-sm font-medium",
-                  badgeToneClassNames[
-                    submissionResult.review.needsReview ? "warning" : "success"
-                  ],
-                ].join(" ")}
-              >
-                {submissionResult.review.needsReview
-                  ? "Needs review"
-                  : "Extraction complete"}
-              </div>
-              <div className="rounded-pill border border-border bg-surface-muted px-4 py-2 text-sm font-medium text-text-muted">
-                {submissionResult.providerMeta.model}
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-control border border-border bg-surface-muted p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                Part Number
-              </p>
-              <p className="mt-2 break-all text-sm font-medium text-text">
-                {submissionResult.partNumber}
-              </p>
-            </div>
-            <div className="rounded-control border border-border bg-surface-muted p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                Source Mode
-              </p>
-              <p className="mt-2 text-sm font-medium text-text">
-                {submissionResult.sourceMode === "upload"
-                  ? "Uploaded PDF"
-                  : "PDF URL"}
-              </p>
-            </div>
-            <div className="rounded-control border border-border bg-surface-muted p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                Package Category
-              </p>
-              <p className="mt-2 text-sm font-medium text-text">
-                {submissionResult.packageCategory}
-              </p>
-            </div>
-            <div className="rounded-control border border-border bg-surface-muted p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                Package Match
-              </p>
-              <p className="mt-2 break-all text-sm font-medium text-text">
-                {submissionResult.packageSelection.selectedPackage}
-              </p>
-              <p
-                className={[
-                  "mt-2 text-xs leading-5 font-medium",
-                  textToneClassNames[
-                    getConfidenceTone(
-                      submissionResult.packageSelection.confidence,
-                    )
-                  ],
-                ].join(" ")}
-              >
-                {formatConfidence(submissionResult.packageSelection.confidence)}
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-control border border-border bg-surface-muted p-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                  Review Notes
-                </p>
-                <p className="text-sm font-medium text-text">
-                  {submissionResult.review.needsReview
-                    ? "Manual review recommended for this extraction."
-                    : "No review flags were returned by the model."}
-                </p>
-              </div>
-              <div
-                className={[
-                  "rounded-pill border px-3 py-1.5 text-xs font-medium",
-                  badgeToneClassNames[
-                    getConfidenceTone(
-                      submissionResult.packageSelection.confidence,
-                    )
-                  ],
-                ].join(" ")}
-              >
-                {formatConfidence(submissionResult.packageSelection.confidence)}
-              </div>
-            </div>
-
-            {submissionResult.review.notes.length > 0 ? (
-              <div className="mt-3 space-y-2">
-                {submissionResult.review.notes.map((note) => (
-                  <p key={note} className="text-sm leading-6 text-text-muted">
-                    {note}
-                  </p>
-                ))}
-              </div>
-            ) : null}
-
-            {submissionResult.packageSelection.alternatives.length > 0 ? (
-              <p className="mt-3 text-sm leading-6 text-text-muted">
-                Alternatives considered:{" "}
-                {submissionResult.packageSelection.alternatives.join(", ")}
-              </p>
-            ) : null}
-
-            <p className="mt-3 break-all text-sm leading-6 text-text-muted">
-              Source summary: {submissionResult.sourceLabel}
-            </p>
-          </div>
-
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-4">
-                <h3 className="text-2xl">Measurements</h3>
-                <span className="rounded-pill border border-border bg-surface-muted px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-text-muted">
-                  {submissionResult.fields.length} extracted fields
-                </span>
-              </div>
-              <div className="overflow-hidden rounded-panel border border-border">
-                <table className="w-full border-collapse text-left">
-                  <thead className="bg-surface-muted text-xs uppercase tracking-[0.18em] text-text-muted">
-                    <tr>
-                      <th className="px-4 py-3 font-medium">Field</th>
-                      <th className="px-4 py-3 font-medium">Status</th>
-                      <th className="px-4 py-3 font-medium">Value</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {submissionResult.fields.map((field) => {
-                      const fieldStatusTone = getFieldStatusTone(field.status);
-                      const fieldConfidenceTone = getConfidenceTone(
-                        field.confidence,
-                      );
-
-                      return (
-                        <tr key={field.field} className="border-t border-border">
-                          <td className="px-4 py-3 text-sm font-medium text-text">
-                            {field.field}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-text-muted align-top">
-                            <span
-                              className={[
-                                "inline-flex rounded-pill border px-3 py-1 text-xs font-medium uppercase tracking-[0.12em]",
-                                badgeToneClassNames[fieldStatusTone],
-                              ].join(" ")}
-                            >
-                              {field.status}
-                            </span>
-                            <p
-                              className={[
-                                "mt-2 text-xs leading-5 font-medium",
-                                textToneClassNames[fieldConfidenceTone],
-                              ].join(" ")}
-                            >
-                              {formatConfidence(field.confidence)}
-                            </p>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-text-muted align-top">
-                            <p className="text-text">{field.value}</p>
-                            <p className="mt-2 text-xs leading-5 text-text-muted">
-                              {formatEvidencePages(field.evidencePages)}
-                            </p>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-4">
-                <h3 className="text-2xl">Pins</h3>
-                <span className="rounded-pill border border-border bg-surface-muted px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-text-muted">
-                  {submissionResult.pinRows.length} extracted pins
-                </span>
-              </div>
-              <div className="overflow-hidden rounded-panel border border-border">
-                <table className="w-full border-collapse text-left">
-                  <thead className="bg-surface-muted text-xs uppercase tracking-[0.18em] text-text-muted">
-                    <tr>
-                      <th className="px-4 py-3 font-medium">Pin Number</th>
-                      <th className="px-4 py-3 font-medium">Pin Name</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {submissionResult.pinRows.length > 0 ? (
-                      submissionResult.pinRows.map((pinRow) => {
-                        const pinConfidenceTone = getConfidenceTone(
-                          pinRow.confidence,
-                        );
-
-                        return (
-                          <tr
-                            key={`${pinRow.pinNumber}-${pinRow.pinName}`}
-                            className="border-t border-border"
-                          >
-                            <td className="px-4 py-3 text-sm font-medium text-text">
-                              {pinRow.pinNumber}
-                            </td>
-                            <td className="px-4 py-3 text-sm text-text-muted align-top">
-                              <p className="font-medium text-text">{pinRow.pinName}</p>
-                              <p className="mt-2 text-xs leading-5 text-text-muted">
-                                <span
-                                  className={[
-                                    "font-medium",
-                                    textToneClassNames[pinConfidenceTone],
-                                  ].join(" ")}
-                                >
-                                  {formatConfidence(pinRow.confidence)}
-                                </span>{" "}
-                                · {formatEvidencePages(pinRow.evidencePages)}
-                              </p>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    ) : (
-                      <tr className="border-t border-border">
-                        <td
-                          className="px-4 py-6 text-sm leading-6 text-text-muted"
-                          colSpan={2}
-                        >
-                          No pin rows were extracted from this datasheet.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </Card>
+        <SubmissionReviewEditor initialSubmission={submissionResult} mode="live" />
       ) : null}
     </div>
   );

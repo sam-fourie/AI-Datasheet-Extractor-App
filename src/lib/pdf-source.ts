@@ -1,7 +1,10 @@
+import type { UrlSourceMeta } from "@/lib/submissions/types";
+
 export type PdfSource = {
   pdfBytes: Uint8Array;
   pdfFileName: string;
   sourceLabel: string;
+  sourceMeta: UrlSourceMeta;
 };
 
 export class PdfSourceError extends Error {
@@ -88,6 +91,11 @@ export async function readPdfFromUrl(datasheetUrl: string): Promise<PdfSource> {
       pdfBytes,
       pdfFileName: buildFileNameFromUrl(parsedUrl),
       sourceLabel: trimmedUrl,
+      sourceMeta: {
+        kind: "url",
+        normalizedUrl: trimmedUrl,
+        pdfFileName: buildFileNameFromUrl(parsedUrl),
+      },
     };
   } catch (error) {
     if (error instanceof PdfSourceError) {

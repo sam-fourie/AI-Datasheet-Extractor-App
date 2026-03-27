@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   extractDatasheet,
   type ExtractionMeasurement,
@@ -5,13 +7,19 @@ import {
 } from "@/lib/ai";
 import {
   PACKAGE_CATEGORY_FIELDS,
-  packageCategories,
-  type DatasheetExtractionResponse,
   type MeasurementFieldRow,
   type PackageCategory,
   type PinRow,
 } from "@/lib/package-categories";
+import { MongoConfigError } from "@/lib/mongodb";
 import { PdfSourceError, readPdfFromUrl } from "@/lib/pdf-source";
+import {
+  createSubmission,
+  type ExtractionSnapshot,
+  type SubmissionDetail,
+  type SubmissionIntakeSnapshot,
+  type UploadSourceMeta,
+} from "@/lib/submissions";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -30,7 +38,7 @@ class RouteError extends Error {
 }
 
 function assertPackageCategory(value: string): asserts value is PackageCategory {
-  if (!packageCategories.includes(value as PackageCategory)) {
+  if (!Object.prototype.hasOwnProperty.call(PACKAGE_CATEGORY_FIELDS, value)) {
     throw new RouteError("Please choose a valid package category.", 400);
   }
 }
@@ -83,10 +91,21 @@ async function readUploadedPdf(formData: FormData) {
     throw new RouteError("Uploaded file does not appear to be a valid PDF.", 400);
   }
 
+  const checksumSha256 = createHash("sha256").update(pdfBytes).digest("hex");
+  const fileName = uploadedFile.name || "datasheet.pdf";
+  const mimeType = uploadedFile.type || "application/pdf";
+
   return {
     pdfBytes,
-    pdfFileName: uploadedFile.name || "datasheet.pdf",
-    sourceLabel: uploadedFile.name || "Uploaded PDF",
+    pdfFileName: fileName,
+    sourceLabel: fileName,
+    sourceMeta: {
+      checksumSha256,
+      fileName,
+      kind: "upload",
+      mimeType,
+      sizeBytes: pdfBytes.byteLength,
+    } satisfies UploadSourceMeta,
   };
 }
 
@@ -123,6 +142,10 @@ function toRouteError(error: unknown) {
 
   if (error instanceof PdfSourceError) {
     return error;
+  }
+
+  if (error instanceof MongoConfigError) {
+    return new RouteError(error.message, 500);
   }
 
   if (error instanceof Error) {
@@ -163,19 +186,27 @@ export async function POST(request: Request) {
       sourceLabel: pdfSource.sourceLabel,
     });
 
-    const responseBody = {
+    const extractionSnapshot: ExtractionSnapshot = {
       fields: extraction.measurements.map(toFieldRow),
-      packageCategory: packageCategoryValue,
       packageSelection: extraction.packageSelection,
-      partNumber,
       pinRows: extraction.pins.map(toPinRow),
       providerMeta: extraction.providerMeta,
       review: extraction.review,
+    };
+    const intakeSnapshot: SubmissionIntakeSnapshot = {
+      packageCategory: packageCategoryValue,
+      partNumber,
+      requestedFields: [...PACKAGE_CATEGORY_FIELDS[packageCategoryValue]],
       sourceLabel: pdfSource.sourceLabel,
+      sourceMeta: pdfSource.sourceMeta,
       sourceMode,
-    } satisfies DatasheetExtractionResponse;
+    };
+    const submission = await createSubmission({
+      extraction: extractionSnapshot,
+      intake: intakeSnapshot,
+    });
 
-    return Response.json(responseBody);
+    return Response.json(submission satisfies SubmissionDetail);
   } catch (error) {
     const routeError = toRouteError(error);
 
