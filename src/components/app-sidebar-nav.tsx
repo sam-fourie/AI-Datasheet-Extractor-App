@@ -2,9 +2,9 @@
 
 import type { SVGProps } from "react";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { AppLink } from "@/components/app-link";
 import { cn } from "@/components/ui/cn";
 
 const primaryLinks = [
@@ -78,7 +78,7 @@ export function AppSidebarNav() {
         const Icon = link.icon;
 
         return (
-          <Link
+          <AppLink
             key={link.href}
             aria-current={isActive ? "page" : undefined}
             className={cn(
@@ -91,7 +91,7 @@ export function AppSidebarNav() {
           >
             <Icon className="size-5 shrink-0" />
             <span className="truncate">{link.label}</span>
-          </Link>
+          </AppLink>
         );
       })}
     </nav>

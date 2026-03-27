@@ -3,6 +3,7 @@ export {
   countReviewDecisions,
   createDefaultSubmissionReview,
   deriveSubmissionAccuracyBucket,
+  hasStartedSubmissionReview,
   normalizeSubmissionReview,
 } from "./review";
 export {

@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { AppLink } from "@/components/app-link";
 import { AppPageLayout } from "@/components/app-page-layout";
 import { SubmissionReviewEditor } from "@/components/submission-review-editor";
 import { getSubmissionDetail } from "@/lib/submissions";
@@ -23,9 +23,9 @@ export default async function SubmissionDetailPage({
   return (
     <AppPageLayout
       action={
-        <Link className={backLinkClassName} href="/submissions">
+        <AppLink className={backLinkClassName} href="/submissions">
           Back to submissions
-        </Link>
+        </AppLink>
       }
       description="Review the saved submission, preserve the immutable extraction snapshot, and update the latest human correction layer."
       title={submission.intake.partNumber}

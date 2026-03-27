@@ -154,6 +154,40 @@ export function normalizeSubmissionReview(
   };
 }
 
+export function hasStartedSubmissionReview(review: SubmissionHumanReview) {
+  if (trimToUndefined(review.reviewerNotes)) {
+    return true;
+  }
+
+  if (
+    review.packageSelection.status !== "pending" ||
+    trimToUndefined(review.packageSelection.correctedSelectedPackage) ||
+    trimToUndefined(review.packageSelection.correctionNote)
+  ) {
+    return true;
+  }
+
+  if (
+    review.measurements.some(
+      (entry) =>
+        entry.status !== "pending" ||
+        entry.correctedStatus !== undefined ||
+        trimToUndefined(entry.correctedValue) ||
+        trimToUndefined(entry.correctionNote),
+    )
+  ) {
+    return true;
+  }
+
+  return review.pins.some(
+    (entry) =>
+      entry.status !== "pending" ||
+      trimToUndefined(entry.correctedPinName) ||
+      trimToUndefined(entry.correctedPinNumber) ||
+      trimToUndefined(entry.correctionNote),
+  );
+}
+
 export function countReviewDecisions(
   review: SubmissionHumanReview,
 ): ReviewDecisionCounts {
@@ -181,6 +215,22 @@ export function deriveSubmissionReviewStatus(
   review: SubmissionHumanReview,
 ): SubmissionReviewStatus {
   return countReviewDecisions(review).pending === 0 ? "reviewed" : "pending";
+}
+
+export function deriveSubmissionAccuracyPercentage(input: {
+  reviewDecisionCounts: ReviewDecisionCounts;
+  reviewStatus: SubmissionReviewStatus;
+}): number | null {
+  const {
+    reviewDecisionCounts: { confirmed, total },
+    reviewStatus,
+  } = input;
+
+  if (reviewStatus !== "reviewed" || total === 0) {
+    return null;
+  }
+
+  return Math.round((confirmed / total) * 100);
 }
 
 export function deriveSubmissionAccuracyBucket(input: {

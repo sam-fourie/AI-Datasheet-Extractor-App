@@ -1,5 +1,4 @@
-import Link from "next/link";
-
+import { AppLink } from "@/components/app-link";
 import {
   Button,
   Card,
@@ -51,12 +50,12 @@ export default function PreviewPage() {
               home page can stay focused on datasheet intake.
             </p>
           </div>
-          <Link
+          <AppLink
             className="inline-flex h-11 items-center justify-center rounded-pill border border-border bg-surface px-5 text-[15px] font-medium tracking-[-0.01em] text-text shadow-soft transition duration-150 ease-out hover:border-border-strong hover:bg-surface-muted"
             href="/"
           >
             Back to extractor
-          </Link>
+          </AppLink>
         </Card>
 
         <Card className="overflow-hidden p-0">

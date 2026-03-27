@@ -8,6 +8,7 @@ import {
   type FormEvent,
 } from "react";
 
+import { useNavigationBlocker } from "@/components/navigation-blocker-provider";
 import { SubmissionReviewEditor } from "@/components/submission-review-editor";
 import {
   Button,
@@ -170,12 +171,15 @@ export function DatasheetIntakeWorkbench() {
   const [urlValidation, setUrlValidation] = useState<UrlValidationState>(
     createIdleUrlValidationState,
   );
+  const { setIsBlocked } = useNavigationBlocker();
+  const liveOutputRef = useRef<HTMLDivElement | null>(null);
   const urlValidationAbortControllerRef = useRef<AbortController | null>(null);
   const urlValidationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
 
   const trimmedPdfUrl = pdfUrl.trim();
+  const submissionResultId = submissionResult?.submissionId;
   const previewFields = selectedCategory
     ? PACKAGE_CATEGORY_FIELDS[selectedCategory]
     : [];
@@ -320,6 +324,33 @@ export function DatasheetIntakeWorkbench() {
       cancelUrlValidation();
     };
   }, [cancelUrlValidation, sourceMode, trimmedPdfUrl, validatePdfUrl]);
+
+  useEffect(() => {
+    setIsBlocked(isSubmitting);
+  }, [isSubmitting, setIsBlocked]);
+
+  useEffect(() => {
+    return () => {
+      setIsBlocked(false);
+    };
+  }, [setIsBlocked]);
+
+  useEffect(() => {
+    if (!submissionResultId) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      liveOutputRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [submissionResultId]);
 
   function handleSourceModeChange(nextMode: SourceMode) {
     cancelUrlValidation();
@@ -664,7 +695,12 @@ export function DatasheetIntakeWorkbench() {
       </div>
 
       {submissionResult ? (
-        <SubmissionReviewEditor initialSubmission={submissionResult} mode="live" />
+        <div ref={liveOutputRef}>
+          <SubmissionReviewEditor
+            initialSubmission={submissionResult}
+            mode="live"
+          />
+        </div>
       ) : null}
     </div>
   );

@@ -1,10 +1,13 @@
 "use client";
 
-import Link from "next/link";
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useEffect, useState, type ReactNode } from "react";
 
+import { AppLink } from "@/components/app-link";
 import { Button, Card } from "@/components/ui";
-import { deriveSubmissionAccuracyBucket } from "@/lib/submissions/review";
+import {
+  deriveSubmissionAccuracyBucket,
+  deriveSubmissionAccuracyPercentage,
+} from "@/lib/submissions/review";
 import type {
   SubmissionAccuracyBucket,
   SubmissionSummary,
@@ -14,6 +17,12 @@ const reviewToneClassNames = {
   pending: "border-warning-ring bg-warning-soft text-warning-strong",
   reviewed: "border-success-ring bg-success-soft text-success-strong",
 } as const;
+
+const accuracyToneClassNames: Record<SubmissionAccuracyBucket, string> = {
+  perfect: "border-success-ring bg-success-soft text-success-strong",
+  mostlyCorrect: "border-warning-ring bg-warning-soft text-warning-strong",
+  belowThreshold: "border-danger-ring bg-danger-soft text-danger-strong",
+};
 
 const detailLinkClassName =
   "inline-flex h-10 items-center justify-center rounded-pill border border-border bg-surface px-4 text-sm font-medium tracking-[-0.01em] text-text shadow-soft transition duration-150 ease-out hover:border-border-strong hover:bg-surface-muted";
@@ -27,7 +36,7 @@ type DeleteSubmissionResponse = {
 type OverviewMetricCardProps = {
   description?: string;
   title: string;
-  value: number;
+  value: ReactNode;
 };
 
 function formatDateTime(value: string) {
@@ -45,6 +54,36 @@ function formatSourceMode(sourceMode: "upload" | "url") {
   return sourceMode === "upload" ? "Uploaded PDF" : "PDF URL";
 }
 
+function formatReviewedBucketPercentage(
+  bucketCount: number,
+  reviewedSubmissionCount: number,
+) {
+  if (reviewedSubmissionCount === 0) {
+    return "0%";
+  }
+
+  const percentage = Math.round((bucketCount / reviewedSubmissionCount) * 100);
+
+  return `${percentage}%`;
+}
+
+function ReviewedBucketMetricValue({
+  bucketCount,
+  reviewedSubmissionCount,
+}: {
+  bucketCount: number;
+  reviewedSubmissionCount: number;
+}) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+      <span className="text-2xl font-semibold text-text">{bucketCount}</span>
+      <span className="text-sm font-medium text-text-muted">
+        ({formatReviewedBucketPercentage(bucketCount, reviewedSubmissionCount)})
+      </span>
+    </div>
+  );
+}
+
 function OverviewMetricCard({
   description,
   title,
@@ -55,7 +94,7 @@ function OverviewMetricCard({
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
         {title}
       </p>
-      <p className="mt-2 text-2xl font-semibold text-text">{value}</p>
+      <div className="mt-2">{value}</div>
       {description ? (
         <p className="mt-2 text-xs leading-5 text-text-muted">{description}</p>
       ) : null}
@@ -95,6 +134,10 @@ export function SubmissionsArchive({
       perfect: 0,
     },
   );
+  const reviewedSubmissionCount =
+    reviewedAccuracyCounts.perfect +
+    reviewedAccuracyCounts.mostlyCorrect +
+    reviewedAccuracyCounts.belowThreshold;
 
   function openDeleteDialog(submission: SubmissionSummary) {
     setDeleteError(null);
@@ -178,111 +221,159 @@ export function SubmissionsArchive({
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <OverviewMetricCard title="Total submissions" value={submissions.length} />
-        <OverviewMetricCard title="Pending review" value={pendingReviewCount} />
+        <OverviewMetricCard
+          title="Total submissions"
+          value={
+            <span className="text-2xl font-semibold text-text">
+              {submissions.length}
+            </span>
+          }
+        />
+        <OverviewMetricCard
+          title="Pending review"
+          value={
+            <span className="text-2xl font-semibold text-text">
+              {pendingReviewCount}
+            </span>
+          }
+        />
         <OverviewMetricCard
           description="Reviewed submissions only"
           title="100% correct"
-          value={reviewedAccuracyCounts.perfect}
+          value={
+            <ReviewedBucketMetricValue
+              bucketCount={reviewedAccuracyCounts.perfect}
+              reviewedSubmissionCount={reviewedSubmissionCount}
+            />
+          }
         />
         <OverviewMetricCard
           description="Reviewed submissions only"
           title="80-99% correct"
-          value={reviewedAccuracyCounts.mostlyCorrect}
+          value={
+            <ReviewedBucketMetricValue
+              bucketCount={reviewedAccuracyCounts.mostlyCorrect}
+              reviewedSubmissionCount={reviewedSubmissionCount}
+            />
+          }
         />
         <OverviewMetricCard
           description="Reviewed submissions only"
           title="<80% correct"
-          value={reviewedAccuracyCounts.belowThreshold}
+          value={
+            <ReviewedBucketMetricValue
+              bucketCount={reviewedAccuracyCounts.belowThreshold}
+              reviewedSubmissionCount={reviewedSubmissionCount}
+            />
+          }
         />
       </div>
 
       {submissions.length > 0 ? (
         <div className="grid gap-4">
-          {submissions.map((submission) => (
-            <Card key={submission.submissionId} className="space-y-4">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={[
-                        "rounded-pill border px-3 py-1 text-xs font-medium uppercase tracking-[0.12em]",
-                        reviewToneClassNames[submission.reviewStatus],
-                      ].join(" ")}
-                    >
-                      {formatReviewStatus(submission.reviewStatus)}
-                    </span>
-                    <span className="rounded-pill border border-border bg-surface-muted px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-text-muted">
-                      {submission.reviewDecisionCounts.pending} pending decisions
-                    </span>
-                    <span className="rounded-pill border border-border bg-surface-muted px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-text-muted">
-                      {submission.providerMeta.model}
-                    </span>
+          {submissions.map((submission) => {
+            const accuracyBucket = deriveSubmissionAccuracyBucket(submission);
+            const accuracyPercentage =
+              deriveSubmissionAccuracyPercentage(submission);
+            const pendingDecisionCount = submission.reviewDecisionCounts.pending;
+
+            return (
+              <Card key={submission.submissionId} className="space-y-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={[
+                          "rounded-pill border px-3 py-1 text-xs font-medium uppercase tracking-[0.12em]",
+                          reviewToneClassNames[submission.reviewStatus],
+                        ].join(" ")}
+                      >
+                        {formatReviewStatus(submission.reviewStatus)}
+                      </span>
+                      {pendingDecisionCount > 0 ? (
+                        <span className="rounded-pill border border-border bg-surface-muted px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-text-muted">
+                          {pendingDecisionCount} pending decisions
+                        </span>
+                      ) : null}
+                      {accuracyBucket && accuracyPercentage !== null ? (
+                        <span
+                          className={[
+                            "rounded-pill border px-3 py-1 text-xs font-medium uppercase tracking-[0.12em]",
+                            accuracyToneClassNames[accuracyBucket],
+                          ].join(" ")}
+                        >
+                          {accuracyPercentage}% accurate
+                        </span>
+                      ) : null}
+                      <span className="rounded-pill border border-border bg-surface-muted px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-text-muted">
+                        {submission.providerMeta.model}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <h3 className="text-2xl">{submission.intake.partNumber}</h3>
+                      <p className="text-sm leading-6 text-text-muted">
+                        {submission.intake.packageCategory} •{" "}
+                        {formatSourceMode(submission.intake.sourceMode)}
+                      </p>
+                    </div>
                   </div>
 
-                  <div className="space-y-1">
-                    <h3 className="text-2xl">{submission.intake.partNumber}</h3>
-                    <p className="text-sm leading-6 text-text-muted">
-                      {submission.intake.packageCategory} •{" "}
-                      {formatSourceMode(submission.intake.sourceMode)}
+                  <div className="flex flex-wrap gap-3">
+                    <AppLink
+                      className={detailLinkClassName}
+                      href={`/submissions/${submission.submissionId}`}
+                    >
+                      Open review
+                    </AppLink>
+                    <Button
+                      disabled={isDeleting}
+                      onClick={() => openDeleteDialog(submission)}
+                      size="sm"
+                      variant="danger"
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-control border border-border bg-surface-muted p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                      Source
+                    </p>
+                    <p className="mt-2 break-all text-sm font-medium text-text">
+                      {submission.intake.sourceLabel}
+                    </p>
+                  </div>
+                  <div className="rounded-control border border-border bg-surface-muted p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                      Requested fields
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-text">
+                      {submission.intake.requestedFields.length}
+                    </p>
+                  </div>
+                  <div className="rounded-control border border-border bg-surface-muted p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                      Created
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-text">
+                      {formatDateTime(submission.createdAt)}
+                    </p>
+                  </div>
+                  <div className="rounded-control border border-border bg-surface-muted p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                      Last updated
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-text">
+                      {formatDateTime(submission.updatedAt)}
                     </p>
                   </div>
                 </div>
-
-                <div className="flex flex-wrap gap-3">
-                  <Link
-                    className={detailLinkClassName}
-                    href={`/submissions/${submission.submissionId}`}
-                  >
-                    Open review
-                  </Link>
-                  <Button
-                    disabled={isDeleting}
-                    onClick={() => openDeleteDialog(submission)}
-                    size="sm"
-                    variant="danger"
-                  >
-                    Delete
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-control border border-border bg-surface-muted p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                    Source
-                  </p>
-                  <p className="mt-2 break-all text-sm font-medium text-text">
-                    {submission.intake.sourceLabel}
-                  </p>
-                </div>
-                <div className="rounded-control border border-border bg-surface-muted p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                    Requested fields
-                  </p>
-                  <p className="mt-2 text-sm font-medium text-text">
-                    {submission.intake.requestedFields.length}
-                  </p>
-                </div>
-                <div className="rounded-control border border-border bg-surface-muted p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                    Created
-                  </p>
-                  <p className="mt-2 text-sm font-medium text-text">
-                    {formatDateTime(submission.createdAt)}
-                  </p>
-                </div>
-                <div className="rounded-control border border-border bg-surface-muted p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                    Last updated
-                  </p>
-                  <p className="mt-2 text-sm font-medium text-text">
-                    {formatDateTime(submission.updatedAt)}
-                  </p>
-                </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       ) : (
         <Card className="space-y-4">
@@ -292,9 +383,9 @@ export function SubmissionsArchive({
             submission and unlock the review queue.
           </p>
           <div>
-            <Link className={detailLinkClassName} href="/">
+            <AppLink className={detailLinkClassName} href="/">
               Go to workbench
-            </Link>
+            </AppLink>
           </div>
         </Card>
       )}
