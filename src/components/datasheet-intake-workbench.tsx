@@ -24,6 +24,15 @@ import {
   type PackageCategory,
   type SourceMode,
 } from "@/lib/package-categories";
+import type {
+  ExtractionRequestPayload,
+  UploadUrlRequestPayload,
+  UploadUrlResponse,
+} from "@/lib/extractions";
+import {
+  MAX_PDF_BYTES,
+  PDF_MIME_TYPE,
+} from "@/lib/pdf";
 import type { SubmissionDetail } from "@/lib/submissions/types";
 
 const sourceModes: Array<{
@@ -51,6 +60,10 @@ type UrlValidationState = {
   checkedUrl: string | null;
   message: string | null;
   status: UrlValidationStatus;
+};
+
+type ErrorResponse = {
+  error?: string;
 };
 
 function formatFileSize(bytes: number) {
@@ -155,6 +168,29 @@ function getUrlValidationAdornment(status: UrlValidationStatus) {
   return undefined;
 }
 
+function isPdfFile(file: File) {
+  return (
+    file.type === PDF_MIME_TYPE ||
+    file.name.toLowerCase().endsWith(".pdf")
+  );
+}
+
+function getUploadFileValidationMessage(file: File | null) {
+  if (!file) {
+    return null;
+  }
+
+  if (!isPdfFile(file)) {
+    return "Please choose a PDF file.";
+  }
+
+  if (file.size > MAX_PDF_BYTES) {
+    return "PDF exceeds the 20 MB upload limit for v1.";
+  }
+
+  return null;
+}
+
 export function DatasheetIntakeWorkbench() {
   const [sourceMode, setSourceMode] = useState<SourceMode>("upload");
   const [selectedCategory, setSelectedCategory] = useState<PackageCategory | "">(
@@ -183,18 +219,25 @@ export function DatasheetIntakeWorkbench() {
   const previewFields = selectedCategory
     ? PACKAGE_CATEGORY_FIELDS[selectedCategory]
     : [];
+  const selectedFileValidationMessage = getUploadFileValidationMessage(selectedFile);
   const hasValidatedPdfUrl =
     urlValidation.status === "valid" &&
     urlValidation.checkedUrl === trimmedPdfUrl;
   const hasActiveSource =
-    sourceMode === "upload" ? selectedFile !== null : hasValidatedPdfUrl;
+    sourceMode === "upload"
+      ? selectedFile !== null && selectedFileValidationMessage === null
+      : hasValidatedPdfUrl;
   const canSubmit =
     Boolean(selectedCategory) &&
     partNumber.trim().length > 0 &&
     hasActiveSource &&
     !isSubmitting;
+  const submittingMessage =
+    sourceMode === "upload"
+      ? "Uploading PDF and submitting to AI..."
+      : "Submitting to AI for extraction...";
   const liveRegionMessage = isSubmitting
-    ? "Submitting to AI for extraction..."
+    ? submittingMessage
     : submissionError
       ? submissionError
       : submissionResult
@@ -387,6 +430,57 @@ export function DatasheetIntakeWorkbench() {
     void validatePdfUrl(trimmedPdfUrl);
   }
 
+  async function uploadPdfToR2(file: File) {
+    const uploadUrlResponse = await fetch("/api/extractions/upload-url", {
+      body: JSON.stringify({
+        fileName: file.name,
+        mimeType: PDF_MIME_TYPE,
+        sizeBytes: file.size,
+      } satisfies UploadUrlRequestPayload),
+      headers: {
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+    const uploadUrlPayload = (await uploadUrlResponse.json().catch(() => null)) as
+      | ErrorResponse
+      | UploadUrlResponse
+      | null;
+
+    if (!uploadUrlResponse.ok || !uploadUrlPayload || !("uploadUrl" in uploadUrlPayload)) {
+      throw new Error(
+        uploadUrlPayload && "error" in uploadUrlPayload
+          ? uploadUrlPayload.error || "Could not prepare the PDF upload."
+          : "Could not prepare the PDF upload.",
+      );
+    }
+
+    let uploadResponse: Response;
+
+    try {
+      uploadResponse = await fetch(uploadUrlPayload.uploadUrl, {
+        body: file,
+        headers: uploadUrlPayload.requiredHeaders,
+        method: "PUT",
+      });
+    } catch {
+      throw new Error(
+        "Could not reach the R2 upload endpoint. Check the bucket endpoint and CORS configuration.",
+      );
+    }
+
+    if (!uploadResponse.ok) {
+      throw new Error("Could not upload the PDF to storage.");
+    }
+
+    return {
+      fileName: file.name,
+      mimeType: PDF_MIME_TYPE,
+      objectKey: uploadUrlPayload.objectKey,
+      sizeBytes: file.size,
+    };
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -422,29 +516,42 @@ export function DatasheetIntakeWorkbench() {
     setSubmissionResult(null);
 
     try {
-      const formData = new FormData();
-
-      formData.set("sourceMode", sourceMode);
-      formData.set("partNumber", partNumber.trim());
-      formData.set("packageCategory", selectedCategory);
+      let extractionPayload: ExtractionRequestPayload;
 
       if (sourceMode === "upload") {
         if (!selectedFile) {
           throw new Error("Please choose a PDF file to upload.");
         }
 
-        formData.set("datasheetFile", selectedFile);
+        if (selectedFileValidationMessage) {
+          throw new Error(selectedFileValidationMessage);
+        }
+
+        extractionPayload = {
+          packageCategory: selectedCategory,
+          partNumber: partNumber.trim(),
+          sourceMode,
+          uploadedPdf: await uploadPdfToR2(selectedFile),
+        };
       } else {
-        formData.set("datasheetUrl", pdfUrl.trim());
+        extractionPayload = {
+          datasheetUrl: pdfUrl.trim(),
+          packageCategory: selectedCategory,
+          partNumber: partNumber.trim(),
+          sourceMode,
+        };
       }
 
       const response = await fetch("/api/extractions", {
-        body: formData,
+        body: JSON.stringify(extractionPayload),
+        headers: {
+          "content-type": "application/json",
+        },
         method: "POST",
       });
       const payload = (await response.json().catch(() => null)) as
         | SubmissionDetail
-        | { error?: string }
+        | ErrorResponse
         | null;
 
       if (!response.ok) {
@@ -577,6 +684,12 @@ export function DatasheetIntakeWorkbench() {
               </Field>
             )}
 
+            {sourceMode === "upload" && selectedFileValidationMessage ? (
+              <div className="rounded-control border border-danger-ring bg-danger-soft px-4 py-3 text-sm leading-6 text-danger-strong">
+                {selectedFileValidationMessage}
+              </div>
+            ) : null}
+
             {sourceMode === "upload" && selectedFile ? (
               <div className="rounded-control border border-border bg-surface-muted px-4 py-3 text-sm text-text-muted">
                 Selected file:{" "}
@@ -634,7 +747,7 @@ export function DatasheetIntakeWorkbench() {
                       aria-hidden="true"
                       className="size-4 animate-spin rounded-full border-2 border-white/30 border-t-white"
                     />
-                    Submitting to AI for extraction...
+                    {submittingMessage}
                   </span>
                 ) : (
                   "Submit for extraction"

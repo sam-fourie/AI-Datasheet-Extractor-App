@@ -4,6 +4,7 @@ import { startTransition, useEffect, useState, type ReactNode } from "react";
 
 import { AppLink } from "@/components/app-link";
 import { Button, Card } from "@/components/ui";
+import { getSubmissionPdfPath } from "@/lib/submissions/source";
 import {
   deriveSubmissionAccuracyBucket,
   deriveSubmissionAccuracyPercentage,
@@ -276,6 +277,10 @@ export function SubmissionsArchive({
             const accuracyPercentage =
               deriveSubmissionAccuracyPercentage(submission);
             const pendingDecisionCount = submission.reviewDecisionCounts.pending;
+            const submissionPdfPath = getSubmissionPdfPath(
+              submission.submissionId,
+              submission.intake.sourceMeta,
+            );
 
             return (
               <Card key={submission.submissionId} className="space-y-4">
@@ -326,6 +331,16 @@ export function SubmissionsArchive({
                     >
                       Open review
                     </AppLink>
+                    {submissionPdfPath ? (
+                      <a
+                        className={detailLinkClassName}
+                        href={submissionPdfPath}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        Open PDF
+                      </a>
+                    ) : null}
                     <Button
                       disabled={isDeleting}
                       onClick={() => openDeleteDialog(submission)}

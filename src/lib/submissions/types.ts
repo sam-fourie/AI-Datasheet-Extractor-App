@@ -10,11 +10,14 @@ import type {
 } from "@/lib/package-categories";
 
 export type UploadSourceMeta = {
+  bucketName?: string;
   checksumSha256: string;
   fileName: string;
   kind: "upload";
   mimeType: string;
+  objectKey?: string;
   sizeBytes: number;
+  storageProvider?: "cloudflare-r2";
 };
 
 export type UrlSourceMeta = {

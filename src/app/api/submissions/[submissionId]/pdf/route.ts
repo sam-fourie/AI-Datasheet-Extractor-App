@@ -1,10 +1,12 @@
 import { MongoConfigError } from "@/lib/mongodb";
 import {
-  deleteSubmission,
   getSubmissionDetail,
   hasRetainedUploadSource,
 } from "@/lib/submissions";
-import { deleteObject } from "@/lib/r2";
+import {
+  createObjectDownloadUrl,
+  R2ConfigError,
+} from "@/lib/r2";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -24,7 +26,7 @@ function toRouteError(error: unknown) {
     return error;
   }
 
-  if (error instanceof MongoConfigError) {
+  if (error instanceof MongoConfigError || error instanceof R2ConfigError) {
     return new RouteError(error.message, 500);
   }
 
@@ -32,12 +34,12 @@ function toRouteError(error: unknown) {
     return new RouteError(error.message, 500);
   }
 
-  return new RouteError("Unexpected submission deletion failure.", 500);
+  return new RouteError("Unexpected PDF download failure.", 500);
 }
 
-export async function DELETE(
+export async function GET(
   _request: Request,
-  context: RouteContext<"/api/submissions/[submissionId]">,
+  context: RouteContext<"/api/submissions/[submissionId]/pdf">,
 ) {
   try {
     const { submissionId } = await context.params;
@@ -46,30 +48,22 @@ export async function DELETE(
       throw new RouteError("A valid submission id is required.", 400);
     }
 
-    const existingSubmission = await getSubmissionDetail(submissionId);
+    const submission = await getSubmissionDetail(submissionId);
 
-    if (!existingSubmission) {
+    if (!submission) {
       throw new RouteError("Submission not found.", 404);
     }
 
-    const didDelete = await deleteSubmission(submissionId);
-
-    if (!didDelete) {
-      throw new RouteError("Submission not found.", 404);
+    if (!hasRetainedUploadSource(submission.intake.sourceMeta)) {
+      throw new RouteError("Saved PDF is not available for this submission.", 404);
     }
 
-    if (hasRetainedUploadSource(existingSubmission.intake.sourceMeta)) {
-      try {
-        await deleteObject(existingSubmission.intake.sourceMeta.objectKey);
-      } catch {
-        // The submission has already been deleted from MongoDB.
-      }
-    }
+    const downloadUrl = await createObjectDownloadUrl(
+      submission.intake.sourceMeta.objectKey,
+      submission.intake.sourceMeta.fileName,
+    );
 
-    return Response.json({
-      submissionId,
-      success: true,
-    });
+    return Response.redirect(downloadUrl, 307);
   } catch (error) {
     const routeError = toRouteError(error);
 

@@ -23,6 +23,7 @@ import {
   hasStartedSubmissionReview,
   normalizeSubmissionReview,
 } from "@/lib/submissions/review";
+import { getSubmissionPdfPath } from "@/lib/submissions/source";
 import type {
   MeasurementReview,
   PinReview,
@@ -438,6 +439,10 @@ export function SubmissionReviewEditor({
   const pendingDecisionLabel = `${reviewDecisionCounts.pending} pending decision${
     reviewDecisionCounts.pending === 1 ? "" : "s"
   }`;
+  const submissionPdfPath = getSubmissionPdfPath(
+    submission.submissionId,
+    submission.intake.sourceMeta,
+  );
   const showReviewFields = isEditing || savedReviewHasStarted;
   const showPreReviewExtractionLayout = !showReviewFields;
   const reviewActionLabel = savedReviewHasStarted ? "Update review" : "Start review";
@@ -865,6 +870,18 @@ export function SubmissionReviewEditor({
             <p className="mt-2 break-all text-xs leading-5 text-text-muted">
               {submission.intake.sourceLabel}
             </p>
+            {submissionPdfPath ? (
+              <div className="mt-3">
+                <a
+                  className={actionLinkClassName}
+                  href={submissionPdfPath}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Open PDF
+                </a>
+              </div>
+            ) : null}
           </div>
           <div className="rounded-control border border-border bg-surface-muted p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">

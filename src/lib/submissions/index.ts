@@ -15,6 +15,10 @@ export {
   createSubmission,
 } from "./repository";
 export {
+  getSubmissionPdfPath,
+  hasRetainedUploadSource,
+} from "./source";
+export {
   formatReviewValidationError,
   submissionReviewPayloadSchema,
   type SubmissionReviewPayloadInput,

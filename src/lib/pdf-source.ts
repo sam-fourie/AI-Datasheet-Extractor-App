@@ -1,3 +1,8 @@
+import {
+  buildPdfFileNameFromUrl,
+  looksLikePdf,
+  MAX_PDF_BYTES,
+} from "@/lib/pdf";
 import type { UrlSourceMeta } from "@/lib/submissions/types";
 
 export type PdfSource = {
@@ -17,20 +22,10 @@ export class PdfSourceError extends Error {
   }
 }
 
-const MAX_PDF_BYTES = 20 * 1024 * 1024;
-const PDF_SIGNATURE = "%PDF-";
-
 function ensurePdfSize(bytes: Uint8Array) {
   if (bytes.byteLength > MAX_PDF_BYTES) {
     throw new PdfSourceError("PDF exceeds the 20 MB upload limit for v1.", 413);
   }
-}
-
-function looksLikePdf(bytes: Uint8Array) {
-  return (
-    Buffer.from(bytes.subarray(0, PDF_SIGNATURE.length)).toString("ascii") ===
-    PDF_SIGNATURE
-  );
 }
 
 function parsePdfUrl(datasheetUrl: string) {
@@ -47,14 +42,6 @@ function parsePdfUrl(datasheetUrl: string) {
   }
 
   return parsedUrl;
-}
-
-function buildFileNameFromUrl(url: URL) {
-  const lastPathSegment = url.pathname.split("/").filter(Boolean).at(-1);
-
-  return lastPathSegment && lastPathSegment.toLowerCase().endsWith(".pdf")
-    ? lastPathSegment
-    : "datasheet.pdf";
 }
 
 export async function readPdfFromUrl(datasheetUrl: string): Promise<PdfSource> {
@@ -89,12 +76,12 @@ export async function readPdfFromUrl(datasheetUrl: string): Promise<PdfSource> {
 
     return {
       pdfBytes,
-      pdfFileName: buildFileNameFromUrl(parsedUrl),
+      pdfFileName: buildPdfFileNameFromUrl(parsedUrl),
       sourceLabel: trimmedUrl,
       sourceMeta: {
         kind: "url",
         normalizedUrl: trimmedUrl,
-        pdfFileName: buildFileNameFromUrl(parsedUrl),
+        pdfFileName: buildPdfFileNameFromUrl(parsedUrl),
       },
     };
   } catch (error) {

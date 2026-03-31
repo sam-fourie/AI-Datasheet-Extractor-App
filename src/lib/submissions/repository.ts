@@ -92,11 +92,20 @@ function toObjectId(submissionId: string): ObjectId | null {
 export async function createSubmission(input: {
   extraction: ExtractionSnapshot;
   intake: SubmissionIntakeSnapshot;
+  submissionId?: string;
 }): Promise<SubmissionDetail> {
   const collection = await getSubmissionCollection();
   const now = new Date();
   const review = createDefaultSubmissionReview(input.extraction);
   const reviewStatus = deriveSubmissionReviewStatus(review);
+  const objectId = input.submissionId
+    ? toObjectId(input.submissionId)
+    : new ObjectId();
+
+  if (!objectId) {
+    throw new Error("Invalid submission id.");
+  }
+
   const document: SubmissionDocument = {
     createdAt: now,
     extraction: input.extraction,
@@ -106,11 +115,15 @@ export async function createSubmission(input: {
     reviewStatus,
     updatedAt: now,
   };
-  const result = await collection.insertOne(document);
+
+  await collection.insertOne({
+    ...document,
+    _id: objectId,
+  });
 
   return mapSubmissionDocument({
     ...document,
-    _id: result.insertedId,
+    _id: objectId,
   });
 }
 
