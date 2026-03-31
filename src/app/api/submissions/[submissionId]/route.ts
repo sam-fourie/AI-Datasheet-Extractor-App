@@ -4,7 +4,10 @@ import {
   getSubmissionDetail,
   hasRetainedUploadSource,
 } from "@/lib/submissions";
-import { deleteObject } from "@/lib/r2";
+import {
+  deleteObject,
+  R2ConfigError,
+} from "@/lib/r2";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -25,6 +28,10 @@ function toRouteError(error: unknown) {
   }
 
   if (error instanceof MongoConfigError) {
+    return new RouteError(error.message, 500);
+  }
+
+  if (error instanceof R2ConfigError) {
     return new RouteError(error.message, 500);
   }
 
@@ -52,18 +59,14 @@ export async function DELETE(
       throw new RouteError("Submission not found.", 404);
     }
 
+    if (hasRetainedUploadSource(existingSubmission.intake.sourceMeta)) {
+      await deleteObject(existingSubmission.intake.sourceMeta.objectKey);
+    }
+
     const didDelete = await deleteSubmission(submissionId);
 
     if (!didDelete) {
       throw new RouteError("Submission not found.", 404);
-    }
-
-    if (hasRetainedUploadSource(existingSubmission.intake.sourceMeta)) {
-      try {
-        await deleteObject(existingSubmission.intake.sourceMeta.objectKey);
-      } catch {
-        // The submission has already been deleted from MongoDB.
-      }
     }
 
     return Response.json({
