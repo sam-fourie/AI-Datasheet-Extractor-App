@@ -1,5 +1,7 @@
-export const MAX_PDF_BYTES = 20 * 1024 * 1024;
+export const MAX_PDF_MB = 50;
+export const MAX_PDF_BYTES = MAX_PDF_MB * 1024 * 1024;
 export const PDF_MIME_TYPE = "application/pdf";
+export const PDF_UPLOAD_LIMIT_MESSAGE = `PDF exceeds the ${MAX_PDF_MB} MB upload limit for v1.`;
 
 const PDF_SIGNATURE_BYTES = [0x25, 0x50, 0x44, 0x46, 0x2d];
 

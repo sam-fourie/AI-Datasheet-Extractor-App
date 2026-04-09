@@ -5,6 +5,7 @@ import type {
 import {
   MAX_PDF_BYTES,
   PDF_MIME_TYPE,
+  PDF_UPLOAD_LIMIT_MESSAGE,
 } from "@/lib/pdf";
 import {
   createPdfUploadUrl,
@@ -57,7 +58,7 @@ function parsePayload(payload: unknown): UploadUrlRequestPayload {
   }
 
   if (sizeBytes > MAX_PDF_BYTES) {
-    throw new RouteError("PDF exceeds the 20 MB upload limit for v1.", 413);
+    throw new RouteError(PDF_UPLOAD_LIMIT_MESSAGE, 413);
   }
 
   return {

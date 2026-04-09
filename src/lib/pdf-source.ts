@@ -2,6 +2,7 @@ import {
   buildPdfFileNameFromUrl,
   looksLikePdf,
   MAX_PDF_BYTES,
+  PDF_UPLOAD_LIMIT_MESSAGE,
 } from "@/lib/pdf";
 import type { UrlSourceMeta } from "@/lib/submissions/types";
 
@@ -24,7 +25,7 @@ export class PdfSourceError extends Error {
 
 function ensurePdfSize(bytes: Uint8Array) {
   if (bytes.byteLength > MAX_PDF_BYTES) {
-    throw new PdfSourceError("PDF exceeds the 20 MB upload limit for v1.", 413);
+    throw new PdfSourceError(PDF_UPLOAD_LIMIT_MESSAGE, 413);
   }
 }
 

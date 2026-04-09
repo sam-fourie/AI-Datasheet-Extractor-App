@@ -24,6 +24,7 @@ import {
   MAX_PDF_BYTES,
   normalizePdfFileName,
   PDF_MIME_TYPE,
+  PDF_UPLOAD_LIMIT_MESSAGE,
 } from "@/lib/pdf";
 import { PdfSourceError, readPdfFromUrl } from "@/lib/pdf-source";
 import {
@@ -86,7 +87,7 @@ function getStringValue(value: unknown, key: string) {
 
 function ensurePdfSize(bytes: Uint8Array) {
   if (bytes.byteLength > MAX_PDF_BYTES) {
-    throw new RouteError("PDF exceeds the 20 MB upload limit for v1.", 413);
+    throw new RouteError(PDF_UPLOAD_LIMIT_MESSAGE, 413);
   }
 }
 
@@ -106,7 +107,7 @@ function parseUploadedPdfPayload(payload: unknown): UploadedPdfPayload {
   }
 
   if (sizeBytes > MAX_PDF_BYTES) {
-    throw new RouteError("PDF exceeds the 20 MB upload limit for v1.", 413);
+    throw new RouteError(PDF_UPLOAD_LIMIT_MESSAGE, 413);
   }
 
   if (!isPendingPdfObjectKey(objectKey)) {

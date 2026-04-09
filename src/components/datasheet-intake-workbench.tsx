@@ -32,6 +32,7 @@ import type {
 import {
   MAX_PDF_BYTES,
   PDF_MIME_TYPE,
+  PDF_UPLOAD_LIMIT_MESSAGE,
 } from "@/lib/pdf";
 import type { SubmissionDetail } from "@/lib/submissions/types";
 
@@ -185,7 +186,7 @@ function getUploadFileValidationMessage(file: File | null) {
   }
 
   if (file.size > MAX_PDF_BYTES) {
-    return "PDF exceeds the 20 MB upload limit for v1.";
+    return PDF_UPLOAD_LIMIT_MESSAGE;
   }
 
   return null;
