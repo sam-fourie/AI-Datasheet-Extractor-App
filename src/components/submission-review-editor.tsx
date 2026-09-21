@@ -6,6 +6,12 @@ import { startTransition, useState } from "react";
 import { AppLink } from "@/components/app-link";
 import { ProviderRunPills } from "@/components/provider-run-pills";
 import {
+  SubmissionAgreementCard,
+  SubmissionAgreementPill,
+} from "@/components/submission-agreement";
+import { SubmissionModelRuns } from "@/components/submission-model-runs";
+import { SubmissionRerunPanel } from "@/components/submission-rerun-panel";
+import {
   Button,
   Card,
   Field,
@@ -13,6 +19,12 @@ import {
   Textarea,
 } from "@/components/ui";
 import { cn } from "@/components/ui/cn";
+import {
+  DEFAULT_OPENAI_MODEL,
+  DEFAULT_REASONING_EFFORT,
+  type OpenAIModelId,
+  type OpenAIReasoningEffort,
+} from "@/lib/ai/models";
 import type {
   ConfidenceLevel,
   MeasurementFieldStatus,
@@ -31,13 +43,17 @@ import type {
   ReviewDecisionStatus,
   SubmissionAccuracyBucket,
   SubmissionDetail,
+  SubmissionModelRun,
   SubmissionReviewPayload,
   SubmissionReviewStatus,
 } from "@/lib/submissions/types";
 
 type SubmissionReviewEditorProps = {
+  defaultModel?: OpenAIModelId;
+  defaultReasoningEffort?: OpenAIReasoningEffort;
   initialSubmission: SubmissionDetail;
   mode?: "detail" | "live";
+  modelRuns?: SubmissionModelRun[];
 };
 
 type ReviewSaveError = {
@@ -392,8 +408,11 @@ function MeasurementStatusSummary({
 }
 
 export function SubmissionReviewEditor({
+  defaultModel = DEFAULT_OPENAI_MODEL,
+  defaultReasoningEffort = DEFAULT_REASONING_EFFORT,
   initialSubmission,
   mode = "detail",
+  modelRuns = [],
 }: SubmissionReviewEditorProps) {
   const [submission, setSubmission] = useState(initialSubmission);
   const [reviewDraft, setReviewDraft] = useState<SubmissionReviewPayload>(() =>
@@ -813,6 +832,9 @@ export function SubmissionReviewEditor({
             </span>
           ) : null}
           <ProviderRunPills providerMeta={submission.providerMeta} />
+          {submission.comparison ? (
+            <SubmissionAgreementPill comparison={submission.comparison} />
+          ) : null}
           {submission.extraction.review.needsReview ? (
             <span
               className={[
@@ -895,6 +917,23 @@ export function SubmissionReviewEditor({
           </div>
         </div>
       </Card>
+
+      {submission.comparison ? (
+        <SubmissionAgreementCard comparison={submission.comparison} />
+      ) : null}
+
+      <SubmissionModelRuns
+        currentSubmissionId={submission.submissionId}
+        runs={modelRuns}
+      />
+
+      {!isEditing ? (
+        <SubmissionRerunPanel
+          defaultModel={defaultModel}
+          defaultReasoningEffort={defaultReasoningEffort}
+          submission={submission}
+        />
+      ) : null}
 
       <div className="space-y-6">
         <Card className="space-y-5">

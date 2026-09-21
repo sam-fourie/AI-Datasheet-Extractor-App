@@ -906,6 +906,8 @@ export function DatasheetIntakeWorkbench({
       {submissionResult ? (
         <div ref={liveOutputRef}>
           <SubmissionReviewEditor
+            defaultModel={defaultModel}
+            defaultReasoningEffort={defaultReasoningEffort}
             initialSubmission={submissionResult}
             mode="live"
           />

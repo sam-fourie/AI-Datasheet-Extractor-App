@@ -2,11 +2,7 @@ import { createHash } from "node:crypto";
 
 import { ObjectId } from "mongodb";
 
-import {
-  extractDatasheet,
-  type ExtractionMeasurement,
-  type ExtractionPin,
-} from "@/lib/ai";
+import { extractDatasheet } from "@/lib/ai";
 import { ExtractionTimeoutError } from "@/lib/ai/errors";
 import {
   ExtractionSettingsError,
@@ -19,9 +15,7 @@ import type {
 } from "@/lib/extractions";
 import {
   PACKAGE_CATEGORY_FIELDS,
-  type MeasurementFieldRow,
   type PackageCategory,
-  type PinRow,
 } from "@/lib/package-categories";
 import { MongoConfigError } from "@/lib/mongodb";
 import {
@@ -43,8 +37,8 @@ import {
   R2ConfigError,
 } from "@/lib/r2";
 import {
+  buildExtractionSnapshot,
   createSubmission,
-  type ExtractionSnapshot,
   type SubmissionDetail,
   type SubmissionIntakeSnapshot,
   type UploadSourceMeta,
@@ -213,32 +207,6 @@ async function readUploadedPdf(uploadedPdf: UploadedPdfPayload) {
   };
 }
 
-function toFieldRow(measurement: ExtractionMeasurement): MeasurementFieldRow {
-  const status =
-    measurement.status === "not_found"
-      ? "Not found"
-      : measurement.status === "needs_review"
-        ? "Needs review"
-        : "Extracted";
-
-  return {
-    confidence: measurement.confidence,
-    evidencePages: measurement.evidencePages,
-    field: measurement.field,
-    status,
-    value: measurement.value ?? "Not found in datasheet",
-  };
-}
-
-function toPinRow(pin: ExtractionPin): PinRow {
-  return {
-    confidence: pin.confidence,
-    evidencePages: pin.evidencePages,
-    pinName: pin.pinName,
-    pinNumber: pin.pinNumber,
-  };
-}
-
 function toRouteError(error: unknown) {
   if (error instanceof RouteError) {
     return error;
@@ -312,13 +280,7 @@ export async function POST(request: Request) {
       sourceLabel: pdfSource.sourceLabel,
     });
 
-    const extractionSnapshot: ExtractionSnapshot = {
-      fields: extraction.measurements.map(toFieldRow),
-      packageSelection: extraction.packageSelection,
-      pinRows: extraction.pins.map(toPinRow),
-      providerMeta: extraction.providerMeta,
-      review: extraction.review,
-    };
+    const extractionSnapshot = buildExtractionSnapshot(extraction);
 
     let submissionId: string | undefined;
     let intakeSnapshot: SubmissionIntakeSnapshot;

@@ -44,3 +44,8 @@ export type UploadUrlResponse = {
   };
   uploadUrl: string;
 };
+
+export type RerunRequestPayload = {
+  model?: OpenAIModelId;
+  reasoningEffort?: OpenAIReasoningEffort;
+};

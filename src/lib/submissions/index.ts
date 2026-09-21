@@ -1,3 +1,9 @@
+export { computeSubmissionAgreement } from "./agreement";
+export {
+  buildExtractionSnapshot,
+  toMeasurementFieldRow,
+  toPinRow,
+} from "./extraction-snapshot";
 export {
   buildSubmissionResolvedView,
   countReviewDecisions,
@@ -10,6 +16,7 @@ export {
   deleteSubmission,
   getSubmissionDetail,
   isValidSubmissionId,
+  listSubmissionModelRuns,
   listSubmissionSummaries,
   updateSubmissionReview,
   createSubmission,
@@ -24,6 +31,8 @@ export {
   type SubmissionReviewPayloadInput,
 } from "./schemas";
 export type {
+  AgreementBasis,
+  AgreementOutcome,
   ExtractionSnapshot,
   MeasurementReview,
   PackageSelectionReview,
@@ -32,6 +41,12 @@ export type {
   ResolvedPackageSelection,
   ResolvedPinRow,
   SubmissionAccuracyBucket,
+  SubmissionAgreement,
+  SubmissionAgreementRow,
+  SubmissionBaselineRef,
+  SubmissionComparison,
+  SubmissionModelRun,
+  SubmissionRerunLink,
   ReviewDecisionCounts,
   ReviewDecisionStatus,
   SubmissionDetail,

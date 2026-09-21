@@ -63,6 +63,12 @@ Uploaded PDFs store metadata only in v1: file name, MIME type, byte size, and SH
 - `src/lib/ai/openai-provider.ts` calls the Responses API with a hard 240 second deadline and records token usage, latency, response id, and an estimated cost in `providerMeta`.
 - Every submission shows its model, effort, token counts, latency, and estimated cost, which is the basis for comparing models against the review accuracy score.
 
+### Model comparison (re-runs)
+
+- The detail page can re-run a datasheet with another model via `POST /api/submissions/[submissionId]/rerun`. The route reuses the stored PDF (copied to a new object key for uploads, fetched again for URL sources) and the original intake snapshot, then saves a new submission with `comparison.baselineSubmissionId` pointing at the root baseline.
+- `src/lib/submissions/agreement.ts` scores a re-run against the baseline. Once the baseline has confirmed or corrected decisions, only those rows count and the reviewed values are the reference; before that, every row is compared against the baseline's raw AI output. Measurements match on the set of numbers they contain, names on normalised identifiers.
+- Agreement is computed on read, so reviewing the baseline later updates every re-run's score. Deleting a baseline leaves its re-runs with no comparison.
+
 ### Review behavior
 
 The original AI extraction is never mutated after persistence. Reviewer edits only update the human review layer. The UI resolves the current display value by overlaying confirmed or corrected review decisions on top of the immutable extraction snapshot.

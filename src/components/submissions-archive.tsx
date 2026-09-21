@@ -4,6 +4,7 @@ import { startTransition, useEffect, useState, type ReactNode } from "react";
 
 import { AppLink } from "@/components/app-link";
 import { ProviderRunPills } from "@/components/provider-run-pills";
+import { SubmissionAgreementPill } from "@/components/submission-agreement";
 import { Button, Card } from "@/components/ui";
 import { getSubmissionPdfPath } from "@/lib/submissions/source";
 import {
@@ -315,6 +316,12 @@ export function SubmissionsArchive({
                         providerMeta={submission.providerMeta}
                         size="sm"
                       />
+                      {submission.comparison ? (
+                        <SubmissionAgreementPill
+                          comparison={submission.comparison}
+                          size="sm"
+                        />
+                      ) : null}
                     </div>
 
                     <div className="space-y-1">

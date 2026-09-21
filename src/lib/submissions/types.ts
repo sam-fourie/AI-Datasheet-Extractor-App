@@ -93,6 +93,7 @@ export type SubmissionAccuracyBucket =
   | "belowThreshold";
 
 export type SubmissionSummary = {
+  comparison?: SubmissionComparison;
   createdAt: string;
   intake: SubmissionIntakeSnapshot;
   providerMeta: ProviderMeta;
@@ -141,4 +142,56 @@ export type SubmissionResolvedView = {
   fields: ResolvedMeasurementRow[];
   packageSelection: ResolvedPackageSelection;
   pinRows: ResolvedPinRow[];
+};
+
+export type AgreementOutcome = "match" | "mismatch" | "partial";
+
+export type AgreementBasis = "reviewed" | "unreviewed";
+
+export type SubmissionAgreementRow = {
+  baselineValue: string;
+  kind: "measurement" | "package" | "pin";
+  label: string;
+  outcome: AgreementOutcome;
+  rerunValue: string;
+};
+
+export type SubmissionAgreement = {
+  agreementPercentage: number | null;
+  basis: AgreementBasis;
+  baselineReviewStatus: SubmissionReviewStatus;
+  baselineReviewedDecisions: number;
+  baselineTotalDecisions: number;
+  compared: number;
+  matches: number;
+  mismatches: number;
+  partialMatches: number;
+  rows: SubmissionAgreementRow[];
+};
+
+/** Stored on a re-run submission to link it to the submission it was cloned from. */
+export type SubmissionRerunLink = {
+  baselineSubmissionId: string;
+};
+
+export type SubmissionBaselineRef = {
+  model: string;
+  partNumber: string;
+  reviewStatus: SubmissionReviewStatus;
+  submissionId: string;
+};
+
+export type SubmissionComparison = {
+  agreement: SubmissionAgreement | null;
+  baseline: SubmissionBaselineRef | null;
+  baselineSubmissionId: string;
+};
+
+export type SubmissionModelRun = {
+  agreement: SubmissionAgreement | null;
+  createdAt: string;
+  isBaseline: boolean;
+  providerMeta: ProviderMeta;
+  reviewStatus: SubmissionReviewStatus;
+  submissionId: string;
 };

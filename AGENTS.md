@@ -32,6 +32,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Server defaults come from `OPENAI_MODEL` and `OPENAI_REASONING_EFFORT` and are resolved in `src/lib/ai/settings.ts`. Route handlers must validate any requested model or effort through `resolveExtractionSettings` before calling the provider.
 - `ProviderMeta` carries optional run metadata (effort, usage, latency, estimated cost, response id). Older submissions only have `model` and `provider`, so treat the extra fields as optional everywhere.
 - Display formatting for provider metadata lives in `src/lib/ai/provider-meta.ts` and the shared `src/components/provider-run-pills.tsx` component. Do not format token counts or costs ad hoc in pages.
+- Re-runs are ordinary submissions with a stored `comparison.baselineSubmissionId`. Agreement against the baseline is computed on read in `src/lib/submissions/agreement.ts` and never persisted, so it always reflects the baseline's latest review. Convert provider results with `buildExtractionSnapshot` in `src/lib/submissions/extraction-snapshot.ts` rather than mapping rows inline in routes.
 
 ## Route Map
 

@@ -5,6 +5,7 @@ import {
 } from "mongodb";
 
 import { getMongoDatabase } from "@/lib/mongodb";
+import { computeSubmissionAgreement } from "@/lib/submissions/agreement";
 import {
   countReviewDecisions,
   createDefaultSubmissionReview,
@@ -13,9 +14,13 @@ import {
 } from "@/lib/submissions/review";
 import type {
   ExtractionSnapshot,
+  SubmissionBaselineRef,
+  SubmissionComparison,
   SubmissionDetail,
   SubmissionHumanReview,
   SubmissionIntakeSnapshot,
+  SubmissionModelRun,
+  SubmissionRerunLink,
   SubmissionReviewPayload,
   SubmissionReviewStatus,
   SubmissionSummary,
@@ -24,6 +29,7 @@ import type {
 const COLLECTION_NAME = "datasheet_submissions";
 
 type SubmissionDocument = {
+  comparison?: SubmissionRerunLink;
   createdAt: Date;
   extraction: ExtractionSnapshot;
   intake: SubmissionIntakeSnapshot;
@@ -43,12 +49,43 @@ async function getSubmissionCollection(): Promise<Collection<SubmissionDocument>
   return database.collection<SubmissionDocument>(COLLECTION_NAME);
 }
 
-function mapSubmissionDocument(
-  document: WithId<SubmissionDocument>,
-): SubmissionDetail {
-  const reviewStatus = deriveSubmissionReviewStatus(document.review);
+function buildBaselineRef(
+  baseline: WithId<SubmissionDocument>,
+): SubmissionBaselineRef {
+  return {
+    model: baseline.extraction.providerMeta.model,
+    partNumber: baseline.intake.partNumber,
+    reviewStatus: deriveSubmissionReviewStatus(baseline.review),
+    submissionId: baseline._id.toHexString(),
+  };
+}
+
+function buildComparison(
+  document: SubmissionDocument,
+  baseline: WithId<SubmissionDocument> | null | undefined,
+): SubmissionComparison | undefined {
+  if (!document.comparison) {
+    return undefined;
+  }
 
   return {
+    agreement: baseline
+      ? computeSubmissionAgreement(baseline, document.extraction)
+      : null,
+    baseline: baseline ? buildBaselineRef(baseline) : null,
+    baselineSubmissionId: document.comparison.baselineSubmissionId,
+  };
+}
+
+function mapSubmissionDocument(
+  document: WithId<SubmissionDocument>,
+  baseline?: WithId<SubmissionDocument> | null,
+): SubmissionDetail {
+  const reviewStatus = deriveSubmissionReviewStatus(document.review);
+  const comparison = buildComparison(document, baseline);
+
+  return {
+    ...(comparison ? { comparison } : {}),
     createdAt: document.createdAt.toISOString(),
     extraction: document.extraction,
     intake: document.intake,
@@ -62,10 +99,14 @@ function mapSubmissionDocument(
   };
 }
 
-function mapSubmissionSummary(document: WithId<SubmissionDocument>): SubmissionSummary {
-  const detail = mapSubmissionDocument(document);
+function mapSubmissionSummary(
+  document: WithId<SubmissionDocument>,
+  baseline?: WithId<SubmissionDocument> | null,
+): SubmissionSummary {
+  const detail = mapSubmissionDocument(document, baseline);
 
   return {
+    ...(detail.comparison ? { comparison: detail.comparison } : {}),
     createdAt: detail.createdAt,
     intake: detail.intake,
     providerMeta: detail.providerMeta,
@@ -90,6 +131,7 @@ function toObjectId(submissionId: string): ObjectId | null {
 }
 
 export async function createSubmission(input: {
+  comparison?: SubmissionRerunLink;
   extraction: ExtractionSnapshot;
   intake: SubmissionIntakeSnapshot;
   submissionId?: string;
@@ -107,6 +149,7 @@ export async function createSubmission(input: {
   }
 
   const document: SubmissionDocument = {
+    ...(input.comparison ? { comparison: input.comparison } : {}),
     createdAt: now,
     extraction: input.extraction,
     intake: input.intake,
@@ -121,10 +164,15 @@ export async function createSubmission(input: {
     _id: objectId,
   });
 
-  return mapSubmissionDocument({
-    ...document,
-    _id: objectId,
-  });
+  const baseline = input.comparison ? await findBaselineDocument(document) : null;
+
+  return mapSubmissionDocument(
+    {
+      ...document,
+      _id: objectId,
+    },
+    baseline,
+  );
 }
 
 export async function listSubmissionSummaries() {
@@ -136,7 +184,18 @@ export async function listSubmissionSummaries() {
     })
     .toArray();
 
-  return documents.map(mapSubmissionSummary);
+  const documentsById = new Map(
+    documents.map((document) => [document._id.toHexString(), document] as const),
+  );
+
+  return documents.map((document) =>
+    mapSubmissionSummary(
+      document,
+      document.comparison
+        ? (documentsById.get(document.comparison.baselineSubmissionId) ?? null)
+        : null,
+    ),
+  );
 }
 
 export async function getSubmissionDetail(
@@ -153,7 +212,11 @@ export async function getSubmissionDetail(
     _id: objectId,
   });
 
-  return document ? mapSubmissionDocument(document) : null;
+  if (!document) {
+    return null;
+  }
+
+  return mapSubmissionDocument(document, await findBaselineDocument(document));
 }
 
 export async function updateSubmissionReview(
@@ -200,14 +263,17 @@ export async function updateSubmissionReview(
     },
   );
 
-  return mapSubmissionDocument({
+  return mapSubmissionDocument(
+    {
     ...existingDocument,
     _id: objectId,
     review,
     reviewedAt,
     reviewStatus,
     updatedAt,
-  });
+    },
+    await findBaselineDocument(existingDocument),
+  );
 }
 
 export async function deleteSubmission(submissionId: string): Promise<boolean> {
@@ -223,4 +289,74 @@ export async function deleteSubmission(submissionId: string): Promise<boolean> {
   });
 
   return result.deletedCount === 1;
+}
+
+async function findBaselineDocument(document: SubmissionDocument) {
+  const baselineSubmissionId = document.comparison?.baselineSubmissionId;
+  const objectId = baselineSubmissionId ? toObjectId(baselineSubmissionId) : null;
+
+  if (!objectId) {
+    return null;
+  }
+
+  const collection = await getSubmissionCollection();
+
+  return collection.findOne({
+    _id: objectId,
+  });
+}
+
+function toModelRun(
+  document: WithId<SubmissionDocument>,
+  baseline: WithId<SubmissionDocument> | null,
+): SubmissionModelRun {
+  const isBaseline = baseline !== null && document._id.equals(baseline._id);
+
+  return {
+    agreement:
+      baseline && !isBaseline
+        ? computeSubmissionAgreement(baseline, document.extraction)
+        : null,
+    createdAt: document.createdAt.toISOString(),
+    isBaseline,
+    providerMeta: document.extraction.providerMeta,
+    reviewStatus: deriveSubmissionReviewStatus(document.review),
+    submissionId: document._id.toHexString(),
+  };
+}
+
+/**
+ * Lists the baseline submission followed by every re-run made from it, oldest
+ * first, with each re-run's agreement against the baseline.
+ */
+export async function listSubmissionModelRuns(
+  rootSubmissionId: string,
+): Promise<SubmissionModelRun[]> {
+  const rootObjectId = toObjectId(rootSubmissionId);
+
+  if (!rootObjectId) {
+    return [];
+  }
+
+  const collection = await getSubmissionCollection();
+  const [root, reruns] = await Promise.all([
+    collection.findOne({
+      _id: rootObjectId,
+    }),
+    collection
+      .find({
+        "comparison.baselineSubmissionId": rootSubmissionId,
+      })
+      .sort({
+        createdAt: 1,
+      })
+      .toArray(),
+  ]);
+  const runs = root ? [toModelRun(root, root)] : [];
+
+  for (const rerun of reruns) {
+    runs.push(toModelRun(rerun, root));
+  }
+
+  return runs;
 }
