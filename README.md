@@ -12,12 +12,12 @@ MONGODB_URI=...
 
 # Optional. Defaults shown. Values must be in the allowlist in src/lib/ai/models.ts.
 OPENAI_MODEL=gpt-5.6-terra
-OPENAI_REASONING_EFFORT=medium
+OPENAI_REASONING_EFFORT=high
 ```
 
 `MONGODB_URI` must include the target database name. The app uses the native MongoDB driver and stores submissions in the `datasheet_submissions` collection.
 
-`OPENAI_MODEL` and `OPENAI_REASONING_EFFORT` set the defaults preselected on the intake workbench. Each request can override them from the form, and the chosen values are validated against the allowlist on the server.
+`OPENAI_MODEL` and `OPENAI_REASONING_EFFORT` set the defaults preselected on the intake workbench. Each request can override them from the form, and the chosen values are validated against the allowlist on the server. High effort is the default because the September 2026 bake-off showed it matched reviewed values better than medium at the same cost.
 
 ## Commands
 

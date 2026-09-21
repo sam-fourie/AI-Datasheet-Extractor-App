@@ -61,7 +61,12 @@ export type OpenAIModelDefinition = {
 
 export const DEFAULT_OPENAI_MODEL: OpenAIModelId = "gpt-5.6-terra";
 
-export const DEFAULT_REASONING_EFFORT: OpenAIReasoningEffort = "medium";
+/**
+ * High is the default since the September 2026 bake-off: on the reviewed
+ * baselines it matched human-confirmed values better than medium at the
+ * same cost and only a couple of seconds slower.
+ */
+export const DEFAULT_REASONING_EFFORT: OpenAIReasoningEffort = "high";
 
 /**
  * Hard deadline for one model call. The extraction route allows 300 seconds in
@@ -88,7 +93,7 @@ const ASTRA_EFFORTS: readonly OpenAIReasoningEffort[] = [
 
 const MODEL_DEFINITIONS: Record<OpenAIModelId, Omit<OpenAIModelDefinition, "id">> = {
   "gpt-5.4": {
-    defaultEffort: "medium",
+    defaultEffort: "high",
     description:
       "Previous default. Keep it as the control when comparing newer models.",
     label: "GPT-5.4",
@@ -101,7 +106,7 @@ const MODEL_DEFINITIONS: Record<OpenAIModelId, Omit<OpenAIModelDefinition, "id">
     supportedEfforts: GPT_5_4_EFFORTS,
   },
   "gpt-5.6-luna": {
-    defaultEffort: "medium",
+    defaultEffort: "high",
     description: "Budget tier at roughly a tenth of Terra's price.",
     label: "GPT-5.6 Luna",
     pricing: {
@@ -113,7 +118,7 @@ const MODEL_DEFINITIONS: Record<OpenAIModelId, Omit<OpenAIModelDefinition, "id">
     supportedEfforts: FULL_EFFORT_RANGE,
   },
   "gpt-5.6-sol": {
-    defaultEffort: "medium",
+    defaultEffort: "high",
     description:
       "Flagship GPT-5.6. Accuracy candidate at about twice Terra's price.",
     label: "GPT-5.6 Sol",
@@ -126,7 +131,7 @@ const MODEL_DEFINITIONS: Record<OpenAIModelId, Omit<OpenAIModelDefinition, "id">
     supportedEfforts: FULL_EFFORT_RANGE,
   },
   "gpt-5.6-terra": {
-    defaultEffort: "medium",
+    defaultEffort: "high",
     description:
       "Default. GPT-5.5-class accuracy at a lower price than GPT-5.4.",
     label: "GPT-5.6 Terra",
@@ -139,7 +144,7 @@ const MODEL_DEFINITIONS: Record<OpenAIModelId, Omit<OpenAIModelDefinition, "id">
     supportedEfforts: FULL_EFFORT_RANGE,
   },
   "gpt-6-astra": {
-    defaultEffort: "medium",
+    defaultEffort: "high",
     description:
       "Most capable and most expensive. Built for agentic work rather than documents.",
     label: "GPT-6 Astra",
