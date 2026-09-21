@@ -3,9 +3,14 @@
 import { startTransition, useEffect, useState, type ReactNode } from "react";
 
 import { AppLink } from "@/components/app-link";
+import { ModelPerformanceTable } from "@/components/model-performance-table";
 import { ProviderRunPills } from "@/components/provider-run-pills";
 import { SubmissionAgreementPill } from "@/components/submission-agreement";
-import { Button, Card } from "@/components/ui";
+import { Button, Card, Field, SelectField, Switch } from "@/components/ui";
+import {
+  sortModelIds,
+  summarizeModelRuns,
+} from "@/lib/submissions/model-stats";
 import { getSubmissionPdfPath } from "@/lib/submissions/source";
 import {
   deriveSubmissionAccuracyBucket,
@@ -115,11 +120,25 @@ export function SubmissionsArchive({
   const [isDeleting, setIsDeleting] = useState(false);
   const [submissionPendingDeletion, setSubmissionPendingDeletion] =
     useState<SubmissionSummary | null>(null);
+  const [modelFilter, setModelFilter] = useState("all");
+  const [includeReruns, setIncludeReruns] = useState(true);
 
-  const pendingReviewCount = submissions.filter(
+  const modelOptions = sortModelIds(
+    Array.from(
+      new Set(submissions.map((submission) => submission.providerMeta.model)),
+    ),
+  );
+  const visibleSubmissions = submissions.filter(
+    (submission) =>
+      (modelFilter === "all" ||
+        submission.providerMeta.model === modelFilter) &&
+      (includeReruns || !submission.comparison),
+  );
+  const modelStats = summarizeModelRuns(visibleSubmissions);
+  const pendingReviewCount = visibleSubmissions.filter(
     (submission) => submission.reviewStatus === "pending",
   ).length;
-  const reviewedAccuracyCounts = submissions.reduce<
+  const reviewedAccuracyCounts = visibleSubmissions.reduce<
     Record<SubmissionAccuracyBucket, number>
   >(
     (counts, submission) => {
@@ -141,6 +160,11 @@ export function SubmissionsArchive({
     reviewedAccuracyCounts.perfect +
     reviewedAccuracyCounts.mostlyCorrect +
     reviewedAccuracyCounts.belowThreshold;
+
+  function resetFilters() {
+    setModelFilter("all");
+    setIncludeReruns(true);
+  }
 
   function openDeleteDialog(submission: SubmissionSummary) {
     setDeleteError(null);
@@ -223,12 +247,36 @@ export function SubmissionsArchive({
 
   return (
     <>
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <Field className="w-full md:max-w-xs" htmlFor="model-filter" label="Model">
+          <SelectField
+            id="model-filter"
+            name="modelFilter"
+            onChange={(event) => setModelFilter(event.currentTarget.value)}
+            value={modelFilter}
+          >
+            <option value="all">All models</option>
+            {modelOptions.map((model) => (
+              <option key={model} value={model}>
+                {model}
+              </option>
+            ))}
+          </SelectField>
+        </Field>
+        <Switch
+          checked={includeReruns}
+          hint="Re-runs are model comparisons started from a saved submission."
+          label="Include re-runs"
+          onChange={(event) => setIncludeReruns(event.currentTarget.checked)}
+        />
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <OverviewMetricCard
           title="Total submissions"
           value={
             <span className="text-2xl font-semibold text-text">
-              {submissions.length}
+              {visibleSubmissions.length}
             </span>
           }
         />
@@ -272,9 +320,11 @@ export function SubmissionsArchive({
         />
       </div>
 
-      {submissions.length > 0 ? (
+      <ModelPerformanceTable stats={modelStats} />
+
+      {visibleSubmissions.length > 0 ? (
         <div className="grid gap-4">
-          {submissions.map((submission) => {
+          {visibleSubmissions.map((submission) => {
             const accuracyBucket = deriveSubmissionAccuracyBucket(submission);
             const accuracyPercentage =
               deriveSubmissionAccuracyPercentage(submission);
@@ -399,6 +449,18 @@ export function SubmissionsArchive({
             );
           })}
         </div>
+      ) : submissions.length > 0 ? (
+        <Card className="space-y-4">
+          <h3 className="text-2xl">No submissions match this filter</h3>
+          <p className="text-sm leading-6 text-text-muted">
+            Change the model filter or include re-runs to see more submissions.
+          </p>
+          <div>
+            <Button onClick={resetFilters} variant="secondary">
+              Show all submissions
+            </Button>
+          </div>
+        </Card>
       ) : (
         <Card className="space-y-4">
           <h3 className="text-2xl">No submissions yet</h3>

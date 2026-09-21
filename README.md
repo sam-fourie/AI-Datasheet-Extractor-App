@@ -68,6 +68,7 @@ Uploaded PDFs store metadata only in v1: file name, MIME type, byte size, and SH
 - The detail page can re-run a datasheet with another model via `POST /api/submissions/[submissionId]/rerun`. The route reuses the stored PDF (copied to a new object key for uploads, fetched again for URL sources) and the original intake snapshot, then saves a new submission with `comparison.baselineSubmissionId` pointing at the root baseline.
 - `src/lib/submissions/agreement.ts` scores a re-run against the baseline. Once the baseline has confirmed or corrected decisions, only those rows count and the reviewed values are the reference; before that, every row is compared against the baseline's raw AI output. Measurements match on the set of numbers they contain, names on normalised identifiers.
 - Agreement is computed on read, so reviewing the baseline later updates every re-run's score. Deleting a baseline leaves its re-runs with no comparison.
+- The archive groups submissions per model and effort in a model performance table (runs, reviewed accuracy, agreement, latency, cost) built by `src/lib/submissions/model-stats.ts`, and can be filtered by model or narrowed to baselines only.
 
 ### Review behavior
 
