@@ -3,6 +3,7 @@
 import { startTransition, useEffect, useState, type ReactNode } from "react";
 
 import { AppLink } from "@/components/app-link";
+import { ProviderRunPills } from "@/components/provider-run-pills";
 import { Button, Card } from "@/components/ui";
 import { getSubmissionPdfPath } from "@/lib/submissions/source";
 import {
@@ -310,9 +311,10 @@ export function SubmissionsArchive({
                           {accuracyPercentage}% accurate
                         </span>
                       ) : null}
-                      <span className="rounded-pill border border-border bg-surface-muted px-3 py-1 text-xs font-medium uppercase tracking-[0.12em] text-text-muted">
-                        {submission.providerMeta.model}
-                      </span>
+                      <ProviderRunPills
+                        providerMeta={submission.providerMeta}
+                        size="sm"
+                      />
                     </div>
 
                     <div className="space-y-1">

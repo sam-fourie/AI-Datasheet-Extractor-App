@@ -4,6 +4,7 @@ import { Check, Clock3, X } from "lucide-react";
 import { startTransition, useState } from "react";
 
 import { AppLink } from "@/components/app-link";
+import { ProviderRunPills } from "@/components/provider-run-pills";
 import {
   Button,
   Card,
@@ -811,9 +812,7 @@ export function SubmissionReviewEditor({
               {accuracyPercentage}% accurate
             </span>
           ) : null}
-          <span className="rounded-pill border border-border bg-surface-muted px-4 py-2 text-sm font-medium text-text-muted">
-            {submission.providerMeta.model}
-          </span>
+          <ProviderRunPills providerMeta={submission.providerMeta} />
           {submission.extraction.review.needsReview ? (
             <span
               className={[

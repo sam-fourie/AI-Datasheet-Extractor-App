@@ -19,6 +19,15 @@ import {
   TextField,
 } from "@/components/ui";
 import {
+  EXTRACTION_REQUEST_TIMEOUT_MS,
+  formatModelPricing,
+  getOpenAIModelDefinition,
+  OPENAI_MODELS,
+  REASONING_EFFORT_LABELS,
+  type OpenAIModelId,
+  type OpenAIReasoningEffort,
+} from "@/lib/ai/models";
+import {
   PACKAGE_CATEGORY_FIELDS,
   packageCategories,
   type PackageCategory,
@@ -192,7 +201,17 @@ function getUploadFileValidationMessage(file: File | null) {
   return null;
 }
 
-export function DatasheetIntakeWorkbench() {
+type DatasheetIntakeWorkbenchProps = {
+  defaultModel: OpenAIModelId;
+  defaultReasoningEffort: OpenAIReasoningEffort;
+};
+
+const REASONING_EFFORT_HINT = `Higher effort helps with dense drawings but takes longer. Requests stop after ${Math.round(EXTRACTION_REQUEST_TIMEOUT_MS / 1000)} seconds.`;
+
+export function DatasheetIntakeWorkbench({
+  defaultModel,
+  defaultReasoningEffort,
+}: DatasheetIntakeWorkbenchProps) {
   const [sourceMode, setSourceMode] = useState<SourceMode>("upload");
   const [selectedCategory, setSelectedCategory] = useState<PackageCategory | "">(
     "",
@@ -200,6 +219,10 @@ export function DatasheetIntakeWorkbench() {
   const [partNumber, setPartNumber] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [pdfUrl, setPdfUrl] = useState("");
+  const [selectedModel, setSelectedModel] = useState<OpenAIModelId>(defaultModel);
+  const [reasoningEffort, setReasoningEffort] = useState<OpenAIReasoningEffort>(
+    defaultReasoningEffort,
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [submissionResult, setSubmissionResult] = useState<SubmissionDetail | null>(
@@ -220,6 +243,8 @@ export function DatasheetIntakeWorkbench() {
   const previewFields = selectedCategory
     ? PACKAGE_CATEGORY_FIELDS[selectedCategory]
     : [];
+  const selectedModelDefinition = getOpenAIModelDefinition(selectedModel);
+  const modelHint = `${selectedModelDefinition.description} ${formatModelPricing(selectedModelDefinition.pricing)}.`;
   const selectedFileValidationMessage = getUploadFileValidationMessage(selectedFile);
   const hasValidatedPdfUrl =
     urlValidation.status === "valid" &&
@@ -410,6 +435,24 @@ export function DatasheetIntakeWorkbench() {
     }
   }
 
+  function handleModelChange(nextModel: OpenAIModelId) {
+    const nextDefinition = getOpenAIModelDefinition(nextModel);
+
+    setSubmissionError(null);
+    setSubmissionResult(null);
+    setSelectedModel(nextModel);
+
+    if (!nextDefinition.supportedEfforts.includes(reasoningEffort)) {
+      setReasoningEffort(nextDefinition.defaultEffort);
+    }
+  }
+
+  function handleReasoningEffortChange(nextEffort: OpenAIReasoningEffort) {
+    setSubmissionError(null);
+    setSubmissionResult(null);
+    setReasoningEffort(nextEffort);
+  }
+
   function handlePdfUrlBlur() {
     if (sourceMode !== "url" || trimmedPdfUrl.length === 0) {
       return;
@@ -529,16 +572,20 @@ export function DatasheetIntakeWorkbench() {
         }
 
         extractionPayload = {
+          model: selectedModel,
           packageCategory: selectedCategory,
           partNumber: partNumber.trim(),
+          reasoningEffort,
           sourceMode,
           uploadedPdf: await uploadPdfToR2(selectedFile),
         };
       } else {
         extractionPayload = {
           datasheetUrl: pdfUrl.trim(),
+          model: selectedModel,
           packageCategory: selectedCategory,
           partNumber: partNumber.trim(),
+          reasoningEffort,
           sourceMode,
         };
       }
@@ -739,6 +786,54 @@ export function DatasheetIntakeWorkbench() {
                 ))}
               </SelectField>
             </Field>
+
+            <div className="grid gap-6 md:grid-cols-2">
+              <Field hint={modelHint} htmlFor="ai-model" label="AI model">
+                <SelectField
+                  disabled={isSubmitting}
+                  id="ai-model"
+                  name="model"
+                  onChange={(event) =>
+                    handleModelChange(event.currentTarget.value as OpenAIModelId)
+                  }
+                  value={selectedModel}
+                >
+                  {OPENAI_MODELS.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.label} · {model.id}
+                      {model.id === defaultModel ? " · default" : ""}
+                    </option>
+                  ))}
+                </SelectField>
+              </Field>
+
+              <Field
+                hint={REASONING_EFFORT_HINT}
+                htmlFor="reasoning-effort"
+                label="Reasoning effort"
+              >
+                <SelectField
+                  disabled={isSubmitting}
+                  id="reasoning-effort"
+                  name="reasoningEffort"
+                  onChange={(event) =>
+                    handleReasoningEffortChange(
+                      event.currentTarget.value as OpenAIReasoningEffort,
+                    )
+                  }
+                  value={reasoningEffort}
+                >
+                  {selectedModelDefinition.supportedEfforts.map((effort) => (
+                    <option key={effort} value={effort}>
+                      {REASONING_EFFORT_LABELS[effort]}
+                      {effort === selectedModelDefinition.defaultEffort
+                        ? " · default"
+                        : ""}
+                    </option>
+                  ))}
+                </SelectField>
+              </Field>
+            </div>
 
             <div className="border-t border-border pt-6">
               <Button className="w-full" disabled={!canSubmit} size="lg" type="submit">

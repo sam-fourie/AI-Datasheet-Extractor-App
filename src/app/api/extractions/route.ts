@@ -7,6 +7,12 @@ import {
   type ExtractionMeasurement,
   type ExtractionPin,
 } from "@/lib/ai";
+import { ExtractionTimeoutError } from "@/lib/ai/errors";
+import {
+  ExtractionSettingsError,
+  resolveExtractionSettings,
+  type ExtractionSettings,
+} from "@/lib/ai/settings";
 import type {
   ExtractionRequestPayload,
   UploadedPdfPayload,
@@ -46,6 +52,8 @@ import {
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
+
+type ParsedExtractionRequest = ExtractionRequestPayload & ExtractionSettings;
 
 class RouteError extends Error {
   constructor(
@@ -122,7 +130,22 @@ function parseUploadedPdfPayload(payload: unknown): UploadedPdfPayload {
   };
 }
 
-function parseExtractionPayload(payload: unknown): ExtractionRequestPayload {
+function resolveRequestedExtractionSettings(value: Record<string, unknown>) {
+  try {
+    return resolveExtractionSettings({
+      model: value.model,
+      reasoningEffort: value.reasoningEffort,
+    });
+  } catch (error) {
+    if (error instanceof ExtractionSettingsError) {
+      throw new RouteError(error.message, 400);
+    }
+
+    throw error;
+  }
+}
+
+function parseExtractionPayload(payload: unknown): ParsedExtractionRequest {
   const value = getObjectValue(payload, "Extraction request payload must be a JSON object.");
   const sourceMode = getStringValue(value.sourceMode, "sourceMode");
   const partNumber = getStringValue(value.partNumber, "partNumber");
@@ -134,10 +157,14 @@ function parseExtractionPayload(payload: unknown): ExtractionRequestPayload {
 
   assertPackageCategory(packageCategoryValue);
 
+  const settings = resolveRequestedExtractionSettings(value);
+
   if (sourceMode === "upload") {
     return {
+      model: settings.model,
       packageCategory: packageCategoryValue,
       partNumber,
+      reasoningEffort: settings.reasoningEffort,
       sourceMode,
       uploadedPdf: parseUploadedPdfPayload(value.uploadedPdf),
     };
@@ -145,8 +172,10 @@ function parseExtractionPayload(payload: unknown): ExtractionRequestPayload {
 
   return {
     datasheetUrl: getStringValue(value.datasheetUrl, "datasheetUrl"),
+    model: settings.model,
     packageCategory: packageCategoryValue,
     partNumber,
+    reasoningEffort: settings.reasoningEffort,
     sourceMode,
   };
 }
@@ -219,6 +248,10 @@ function toRouteError(error: unknown) {
     return error;
   }
 
+  if (error instanceof ExtractionTimeoutError) {
+    return new RouteError(error.message, 504);
+  }
+
   if (error instanceof MongoConfigError) {
     return new RouteError(error.message, 500);
   }
@@ -269,10 +302,12 @@ export async function POST(request: Request) {
     }
 
     const extraction = await extractDatasheet({
+      model: payload.model,
       packageCategory: payload.packageCategory,
       partNumber: payload.partNumber,
       pdfBytes: pdfSource.pdfBytes,
       pdfFileName: pdfSource.pdfFileName,
+      reasoningEffort: payload.reasoningEffort,
       requestedFields: PACKAGE_CATEGORY_FIELDS[payload.packageCategory],
       sourceLabel: pdfSource.sourceLabel,
     });

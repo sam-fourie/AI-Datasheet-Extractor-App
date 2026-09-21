@@ -1,3 +1,4 @@
+import type { OpenAIModelId, OpenAIReasoningEffort } from "@/lib/ai/models";
 import {
   type ConfidenceLevel,
   type PackageCategory,
@@ -10,10 +11,12 @@ import { OpenAIExtractionProvider } from "./openai-provider";
 export type ExtractionMeasurementStatus = "found" | "needs_review" | "not_found";
 
 export type ExtractionInput = {
+  model: OpenAIModelId;
   packageCategory: PackageCategory;
   partNumber: string;
   pdfBytes: Uint8Array;
   pdfFileName: string;
+  reasoningEffort: OpenAIReasoningEffort;
   requestedFields: readonly string[];
   sourceLabel: string;
 };

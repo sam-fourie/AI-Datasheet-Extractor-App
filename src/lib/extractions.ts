@@ -1,3 +1,4 @@
+import type { OpenAIModelId, OpenAIReasoningEffort } from "@/lib/ai/models";
 import type { PackageCategory } from "@/lib/package-categories";
 
 export type UploadedPdfPayload = {
@@ -8,16 +9,20 @@ export type UploadedPdfPayload = {
 };
 
 export type ExtractionUploadRequest = {
+  model?: OpenAIModelId;
   packageCategory: PackageCategory;
   partNumber: string;
+  reasoningEffort?: OpenAIReasoningEffort;
   sourceMode: "upload";
   uploadedPdf: UploadedPdfPayload;
 };
 
 export type ExtractionUrlRequest = {
   datasheetUrl: string;
+  model?: OpenAIModelId;
   packageCategory: PackageCategory;
   partNumber: string;
+  reasoningEffort?: OpenAIReasoningEffort;
   sourceMode: "url";
 };
 

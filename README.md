@@ -9,9 +9,15 @@ Create `.env.local` with:
 ```bash
 OPENAI_API_KEY=...
 MONGODB_URI=...
+
+# Optional. Defaults shown. Values must be in the allowlist in src/lib/ai/models.ts.
+OPENAI_MODEL=gpt-5.6-terra
+OPENAI_REASONING_EFFORT=medium
 ```
 
 `MONGODB_URI` must include the target database name. The app uses the native MongoDB driver and stores submissions in the `datasheet_submissions` collection.
+
+`OPENAI_MODEL` and `OPENAI_REASONING_EFFORT` set the defaults preselected on the intake workbench. Each request can override them from the form, and the chosen values are validated against the allowlist on the server.
 
 ## Commands
 
@@ -49,6 +55,13 @@ Uploaded PDFs store metadata only in v1: file name, MIME type, byte size, and SH
 - `src/lib/submissions/repository.ts`: Mongo-backed submission repository
 - `src/lib/mongodb.ts`: cached Mongo client bootstrap
 - `src/components/submission-review-editor.tsx`: shared review UI used by both the live result and saved detail page
+
+### AI model configuration
+
+- `src/lib/ai/models.ts` is the client-safe allowlist of OpenAI models with labels, list pricing, and the reasoning efforts each one accepts. Add or retire models there.
+- `src/lib/ai/settings.ts` resolves the server defaults from the environment and validates per-request overrides.
+- `src/lib/ai/openai-provider.ts` calls the Responses API with a hard 240 second deadline and records token usage, latency, response id, and an estimated cost in `providerMeta`.
+- Every submission shows its model, effort, token counts, latency, and estimated cost, which is the basis for comparing models against the review accuracy score.
 
 ### Review behavior
 

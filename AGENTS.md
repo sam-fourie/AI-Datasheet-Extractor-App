@@ -26,6 +26,13 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Review normalization, resolved display values, and decision counting live in `src/lib/submissions/review.ts`. Keep all review-state rules centralized there.
 - The shared review UI lives in `src/components/submission-review-editor.tsx` and is used by both the live post-submit result and the persisted submission detail page. Keep those workflows on the same editor rather than forking the review behavior.
 
+## AI Provider Configuration
+
+- The OpenAI model allowlist, list pricing, and supported reasoning efforts live in `src/lib/ai/models.ts`. It is imported by client components, so keep it free of server-only code and SDK imports.
+- Server defaults come from `OPENAI_MODEL` and `OPENAI_REASONING_EFFORT` and are resolved in `src/lib/ai/settings.ts`. Route handlers must validate any requested model or effort through `resolveExtractionSettings` before calling the provider.
+- `ProviderMeta` carries optional run metadata (effort, usage, latency, estimated cost, response id). Older submissions only have `model` and `provider`, so treat the extra fields as optional everywhere.
+- Display formatting for provider metadata lives in `src/lib/ai/provider-meta.ts` and the shared `src/components/provider-run-pills.tsx` component. Do not format token counts or costs ad hoc in pages.
+
 ## Route Map
 
 - `/` is the intake workbench.

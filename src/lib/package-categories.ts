@@ -565,9 +565,22 @@ export type ReviewSummary = {
   notes: string[];
 };
 
+export type ProviderUsage = {
+  cachedInputTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+};
+
 export type ProviderMeta = {
+  estimatedCostUsd?: number;
+  latencyMs?: number;
   model: string;
   provider: string;
+  reasoningEffort?: string;
+  responseId?: string;
+  usage?: ProviderUsage;
 };
 
 export type DatasheetExtractionResponse = {

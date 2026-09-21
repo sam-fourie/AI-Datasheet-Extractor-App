@@ -10,9 +10,17 @@ import type {
   ExtractionPin,
   ExtractionResult,
 } from "@/lib/ai";
-import type { ConfidenceLevel, ReviewSummary } from "@/lib/package-categories";
-
-const OPENAI_MODEL = "gpt-5.4";
+import { ExtractionTimeoutError } from "@/lib/ai/errors";
+import {
+  estimateExtractionCostUsd,
+  EXTRACTION_REQUEST_TIMEOUT_MS,
+} from "@/lib/ai/models";
+import type {
+  ConfidenceLevel,
+  ProviderMeta,
+  ProviderUsage,
+  ReviewSummary,
+} from "@/lib/package-categories";
 
 const confidenceSchema = z.enum(["high", "medium", "low"]);
 
@@ -171,42 +179,101 @@ function buildPackageSelection(
   };
 }
 
+function buildProviderUsage(
+  usage: OpenAI.Responses.ResponseUsage | undefined,
+): ProviderUsage | null {
+  if (!usage) {
+    return null;
+  }
+
+  return {
+    cachedInputTokens: usage.input_tokens_details?.cached_tokens ?? 0,
+    inputTokens: usage.input_tokens ?? 0,
+    outputTokens: usage.output_tokens ?? 0,
+    reasoningTokens: usage.output_tokens_details?.reasoning_tokens ?? 0,
+    totalTokens: usage.total_tokens ?? 0,
+  };
+}
+
+function buildProviderMeta(
+  input: ExtractionInput,
+  response: OpenAI.Responses.Response,
+  latencyMs: number,
+): ProviderMeta {
+  const usage = buildProviderUsage(response.usage);
+  const estimatedCostUsd = usage ? estimateExtractionCostUsd(input.model, usage) : null;
+
+  return {
+    latencyMs: Math.round(latencyMs),
+    model: input.model,
+    provider: "openai",
+    reasoningEffort: input.reasoningEffort,
+    responseId: response.id,
+    ...(usage ? { usage } : {}),
+    ...(estimatedCostUsd !== null ? { estimatedCostUsd } : {}),
+  };
+}
+
+async function runWithDeadline<T>(
+  deadlineSignal: AbortSignal,
+  operation: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (deadlineSignal.aborted) {
+      throw new ExtractionTimeoutError(EXTRACTION_REQUEST_TIMEOUT_MS);
+    }
+
+    throw error;
+  }
+}
+
 export class OpenAIExtractionProvider implements AiProvider {
   async extractDatasheet(input: ExtractionInput): Promise<ExtractionResult> {
     const base64Pdf = Buffer.from(input.pdfBytes).toString("base64");
-
-    const response = await getOpenAIClient().responses.parse({
-      model: OPENAI_MODEL,
-      reasoning: {
-        effort: "medium",
-      },
-      input: [
+    const deadlineSignal = AbortSignal.timeout(EXTRACTION_REQUEST_TIMEOUT_MS);
+    const startedAt = performance.now();
+    const response = await runWithDeadline(deadlineSignal, () =>
+      getOpenAIClient().responses.parse(
         {
-          role: "developer",
-          content:
-            "You extract datasheet measurements and pin maps into a strict schema. Never invent values. Use not_found or needs_review instead of guessing silently.",
-        },
-        {
-          role: "user",
-          content: [
+          model: input.model,
+          reasoning: {
+            effort: input.reasoningEffort,
+          },
+          input: [
             {
-              type: "input_text",
-              text: buildPrompt(input),
+              role: "developer",
+              content:
+                "You extract datasheet measurements and pin maps into a strict schema. Never invent values. Use not_found or needs_review instead of guessing silently.",
             },
             {
-              type: "input_file",
-              filename: input.pdfFileName,
-              file_data: `data:application/pdf;base64,${base64Pdf}`,
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: buildPrompt(input),
+                },
+                {
+                  type: "input_file",
+                  filename: input.pdfFileName,
+                  file_data: `data:application/pdf;base64,${base64Pdf}`,
+                },
+              ],
             },
           ],
+          text: {
+            format: zodTextFormat(extractionSchema, "datasheet_extraction"),
+            verbosity: "low",
+          },
         },
-      ],
-      text: {
-        format: zodTextFormat(extractionSchema, "datasheet_extraction"),
-        verbosity: "low",
-      },
-    });
-
+        {
+          signal: deadlineSignal,
+          timeout: EXTRACTION_REQUEST_TIMEOUT_MS,
+        },
+      ),
+    );
+    const latencyMs = performance.now() - startedAt;
     const parsed = response.output_parsed;
 
     if (!parsed) {
@@ -222,10 +289,7 @@ export class OpenAIExtractionProvider implements AiProvider {
       measurements,
       packageSelection,
       pins,
-      providerMeta: {
-        model: OPENAI_MODEL,
-        provider: "openai",
-      },
+      providerMeta: buildProviderMeta(input, response, latencyMs),
       review,
     };
   }
