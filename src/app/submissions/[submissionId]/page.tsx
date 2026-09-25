@@ -1,50 +1,75 @@
+import { cache } from "react";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { AppLink } from "@/components/app-link";
-import { AppPageLayout } from "@/components/app-page-layout";
-import { SubmissionReviewEditor } from "@/components/submission-review-editor";
+import type { InitialPdfViewer } from "@/components/review/review-services";
+import { ReviewWorkspace } from "@/components/review/review-workspace";
+import { formatReviewPageTitle } from "@/components/review/workspace-model";
 import { getDefaultExtractionSettings } from "@/lib/ai/settings";
+import { buildBaselineRunHints } from "@/lib/submissions/agreement";
+import { resolvePdfViewer } from "@/lib/submissions/pdf-viewer";
 import {
+  findNextPendingBaseline,
   getSubmissionDetail,
   listSubmissionModelRuns,
-} from "@/lib/submissions";
+} from "@/lib/submissions/repository";
+import type { SubmissionDetail } from "@/lib/submissions/types";
 
-const backLinkClassName =
-  "inline-flex h-10 items-center justify-center rounded-pill border border-border bg-surface px-4 text-sm font-medium tracking-[-0.01em] text-text shadow-soft transition duration-150 ease-out hover:border-border-strong hover:bg-surface-muted";
+/** Shared by generateMetadata and the page, so Mongo is read once per request (React cache). */
+const getSubmission = cache(getSubmissionDetail);
 
-export default async function SubmissionDetailPage({
-  params,
-}: {
-  params: Promise<{ submissionId: string }>;
-}) {
-  const { submissionId } = await params;
-  const submission = await getSubmissionDetail(submissionId);
+async function loadPdfViewer(submission: SubmissionDetail): Promise<InitialPdfViewer> {
+  try {
+    return await resolvePdfViewer(submission);
+  } catch (error) {
+    const { sourceMeta } = submission.intake;
+
+    return {
+      message: error instanceof Error ? error.message : "The datasheet couldn't be loaded.",
+      originalUrl: sourceMeta.kind === "url" ? sourceMeta.normalizedUrl : null,
+      status: "error",
+    };
+  }
+}
+
+export async function generateMetadata(
+  props: PageProps<"/submissions/[submissionId]">,
+): Promise<Metadata> {
+  const { submissionId } = await props.params;
+  const submission = await getSubmission(submissionId);
+
+  return {
+    title: submission ? formatReviewPageTitle(submission) : "Submission not found",
+  };
+}
+
+export default async function SubmissionReviewPage(
+  props: PageProps<"/submissions/[submissionId]">,
+) {
+  const { submissionId } = await props.params;
+  const submission = await getSubmission(submissionId);
 
   if (!submission) {
     notFound();
   }
 
-  const rootSubmissionId =
-    submission.comparison?.baselineSubmissionId ?? submission.submissionId;
-  const modelRuns = await listSubmissionModelRuns(rootSubmissionId);
-  const defaultSettings = getDefaultExtractionSettings();
+  const rootId = submission.comparison?.baselineSubmissionId ?? submission.submissionId;
+  const [runs, pdfViewer, nextReview, defaults] = await Promise.all([
+    listSubmissionModelRuns(rootId),
+    loadPdfViewer(submission),
+    findNextPendingBaseline(submission.submissionId).catch(() => null),
+    Promise.resolve(getDefaultExtractionSettings()),
+  ]);
 
   return (
-    <AppPageLayout
-      action={
-        <AppLink className={backLinkClassName} href="/submissions">
-          Back to submissions
-        </AppLink>
-      }
-      description="Review the saved submission, preserve the immutable extraction snapshot, and update the latest human correction layer."
-      title={submission.intake.partNumber}
-    >
-      <SubmissionReviewEditor
-        defaultModel={defaultSettings.model}
-        defaultReasoningEffort={defaultSettings.reasoningEffort}
-        initialSubmission={submission}
-        modelRuns={modelRuns}
-      />
-    </AppPageLayout>
+    <ReviewWorkspace
+      defaultSettings={{ model: defaults.model, reasoningEffort: defaults.reasoningEffort }}
+      initialSubmission={submission}
+      key={submission.submissionId}
+      nextReview={nextReview}
+      pdfViewer={pdfViewer}
+      runHints={submission.comparison ? null : buildBaselineRunHints(runs)}
+      runs={runs}
+    />
   );
 }

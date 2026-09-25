@@ -21,6 +21,8 @@ export type UploadSourceMeta = {
 };
 
 export type UrlSourceMeta = {
+  /** sha256 hex of the PDF bytes that were extracted. Set for URL submissions created after the Sept 2026 redesign. */
+  contentSha256?: string;
   kind: "url";
   normalizedUrl: string;
   pdfFileName: string;
@@ -149,10 +151,19 @@ export type AgreementOutcome = "match" | "mismatch" | "partial";
 export type AgreementBasis = "reviewed" | "unreviewed";
 
 export type SubmissionAgreementRow = {
+  /** Index of the row in the baseline extraction (measurement field index or pin index). Absent for the package row. */
+  baselineIndex?: number;
   baselineValue: string;
+  /**
+   * Stable row key shared with the review workspace:
+   * "package", "measurement:<field lower-case>", or "pin:<baseline pin index>".
+   */
+  key: string;
   kind: "measurement" | "package" | "pin";
   label: string;
   outcome: AgreementOutcome;
+  /** Index of the matched row in the re-run extraction, when one was found. */
+  rerunIndex?: number;
   rerunValue: string;
 };
 
@@ -192,6 +203,159 @@ export type SubmissionModelRun = {
   createdAt: string;
   isBaseline: boolean;
   providerMeta: ProviderMeta;
+  reviewProgress: ReviewProgress;
   reviewStatus: SubmissionReviewStatus;
   submissionId: string;
 };
+
+/* ------------------------------------------------------------------------- */
+/* Redesign contracts (Sept 2026). Shared by the list, review, reports and    */
+/* intake packages. Change only with the lead engineer.                       */
+/* ------------------------------------------------------------------------- */
+
+export type ReviewProgressState = "notStarted" | "inProgress" | "reviewed";
+
+export type ReviewProgress = {
+  /** Accuracy percentage once fully reviewed, otherwise null. */
+  accuracy: number | null;
+  confirmed: number;
+  corrected: number;
+  decided: number;
+  pending: number;
+  state: ReviewProgressState;
+  total: number;
+};
+
+export type SubmissionSourceSummary = {
+  /** Display file name, e.g. "se555.pdf". */
+  fileName: string;
+  /** URL host without "www.", e.g. "ti.com"; null for uploads. */
+  host: string | null;
+  kind: "upload" | "url";
+  /** Short label for meta lines, e.g. "ti.com · se555.pdf" or "se555.pdf". */
+  label: string;
+  originalUrl: string | null;
+  sizeBytes: number | null;
+};
+
+export type SubmissionListRun = {
+  agreementBasis: AgreementBasis | null;
+  agreementPercentage: number | null;
+  baselineReviewStatus: SubmissionReviewStatus | null;
+  baselineReviewedDecisions: number | null;
+  baselineTotalDecisions: number | null;
+  createdAt: string;
+  /** True when isScoredAgreement(agreement) holds. */
+  isScored: boolean;
+  providerMeta: ProviderMeta;
+  reviewProgress: ReviewProgress;
+  submissionId: string;
+};
+
+export type DatasheetGroupBaseline = {
+  createdAt: string;
+  packageCategory: PackageCategory;
+  partNumber: string;
+  pdfAvailable: boolean;
+  /** Internal PDF route from `getSubmissionPdfHref`, or null when no copy is available. */
+  pdfHref: string | null;
+  providerMeta: ProviderMeta;
+  reviewProgress: ReviewProgress;
+  reviewedAt: string | null;
+  source: SubmissionSourceSummary;
+  submissionId: string;
+  updatedAt: string;
+};
+
+/** One row group on /submissions: a baseline and the re-runs compared against it. */
+export type DatasheetGroup = {
+  baseline: DatasheetGroupBaseline;
+  /** Other baselines with the same normalized part number. */
+  duplicateCount: number;
+  /** A re-run whose baseline was deleted, shown as its own group. */
+  isOrphanRun: boolean;
+  /** Latest of the baseline's updatedAt and its runs' createdAt. */
+  lastActivityAt: string;
+  runs: SubmissionListRun[];
+  /** Min and max agreement over SCORED runs only, or null. */
+  scoredAgreementRange: { max: number; min: number } | null;
+};
+
+export type DatasheetListStatus = "all" | "needs-review" | "reviewed";
+
+export type DatasheetListSort = "recent" | "newest" | "part" | "pending";
+
+export type DatasheetListQuery = {
+  category: PackageCategory | null;
+  limit: number;
+  q: string;
+  sort: DatasheetListSort;
+  status: DatasheetListStatus;
+};
+
+export type DatasheetListResult = {
+  /** Counts reflect q and category but not status. Re-runs are never counted. */
+  counts: { all: number; needsReview: number; reviewed: number };
+  /** Totals over every baseline, ignoring q, category and status. Re-runs are never counted. */
+  totals: { all: number; needsReview: number };
+  groups: DatasheetGroup[];
+  hasMore: boolean;
+  /** Categories present among baselines, for the category filter. */
+  categories: PackageCategory[];
+};
+
+export type DatasheetIndexEntry = {
+  createdAt: string;
+  normalizedPartNumber: string;
+  normalizedUrl: string | null;
+  packageCategory: PackageCategory;
+  partNumber: string;
+  pdfRetained: boolean;
+  reviewProgress: ReviewProgress;
+  runCount: number;
+  submissionId: string;
+};
+
+export type NextReviewTarget = {
+  partNumber: string;
+  submissionId: string;
+};
+
+export type ReportSubmission = SubmissionSummary & {
+  isBaseline: boolean;
+  measurementDecisions: Array<{ field: string; status: ReviewDecisionStatus }>;
+  packageDecision: ReviewDecisionStatus;
+  pinDecisionCounts: ReviewDecisionCounts;
+  /** The baseline id for re-runs, the submission's own id for baselines. */
+  rootSubmissionId: string;
+};
+
+/** Lean run metadata for intake time/cost estimates. */
+export type RunMetaSummary = Pick<
+  SubmissionSummary,
+  "comparison" | "providerMeta" | "reviewDecisionCounts" | "reviewStatus"
+>;
+
+export type PdfViewerState =
+  | {
+      expiresAt: string;
+      fileName: string;
+      /** "extracted" = the exact bytes that were extracted; "latest-copy" = a copy fetched later from the vendor. */
+      revision: "extracted" | "latest-copy";
+      cachedAt: string | null;
+      sizeBytes: number | null;
+      source: "upload" | "url-cache";
+      status: "ready";
+      url: string;
+    }
+  | { fileName: string; originalUrl: string; status: "uncached" }
+  | { reason: "not-retained"; status: "unavailable" };
+
+/** Per baseline row key: how the loaded re-runs compare on that row. */
+export type BaselineRunHint = {
+  differs: number;
+  partial: number;
+  runs: number;
+};
+
+export type BaselineRunHints = Record<string, BaselineRunHint>;

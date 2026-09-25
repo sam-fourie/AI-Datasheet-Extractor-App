@@ -1,8 +1,10 @@
 import { ZodError } from "zod";
 
+import { requireAuthorizedRequest } from "@/app/api/_lib/access";
 import { MongoConfigError } from "@/lib/mongodb";
 import {
   formatReviewValidationError,
+  isValidSubmissionId,
   submissionReviewPayloadSchema,
   updateSubmissionReview,
 } from "@/lib/submissions";
@@ -44,10 +46,16 @@ export async function PATCH(
   request: Request,
   context: RouteContext<"/api/submissions/[submissionId]/review">,
 ) {
+  const unauthorized = requireAuthorizedRequest(request);
+
+  if (unauthorized) {
+    return unauthorized;
+  }
+
   try {
     const { submissionId } = await context.params;
 
-    if (!submissionId || typeof submissionId !== "string") {
+    if (!isValidSubmissionId(submissionId)) {
       throw new RouteError("A valid submission id is required.", 400);
     }
 

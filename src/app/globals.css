@@ -1,55 +1,129 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens. Components use the Tailwind names from @theme below
+ * (bg-surface, text-text-muted, rounded-md, shadow-overlay, text-title-1…).
+ */
 :root {
   color-scheme: light;
+
+  /* Surfaces */
   --ui-page: #f5f5f7;
   --ui-surface: #ffffff;
   --ui-surface-elevated: #ffffff;
-  --ui-surface-muted: #eef1f5;
-  --ui-border: rgba(15, 23, 42, 0.08);
-  --ui-border-strong: rgba(15, 23, 42, 0.14);
-  --ui-text: #111827;
-  --ui-text-muted: #667085;
+  --ui-surface-subtle: #fafafa;
+  --ui-surface-muted: #f2f2f4;
+  --ui-surface-sunken: #ebebee;
+  --ui-surface-hover: rgba(0, 0, 0, 0.035);
+  --ui-surface-selected: rgba(0, 113, 227, 0.08);
+  --ui-row-active: rgba(0, 113, 227, 0.06);
+  --ui-material: rgba(255, 255, 255, 0.78);
+  --ui-scrim: rgba(0, 0, 0, 0.28);
+
+  /* Borders */
+  --ui-border: rgba(0, 0, 0, 0.08);
+  --ui-border-subtle: rgba(0, 0, 0, 0.05);
+  --ui-border-strong: rgba(0, 0, 0, 0.16);
+  --ui-control-border: rgba(0, 0, 0, 0.42);
+
+  /* Text */
+  --ui-text: #1d1d1f;
+  --ui-text-muted: #6e6e73;
+  --ui-text-tertiary: #86868b;
+  /* Secondary text on tinted fills (accent/status soft): >= 5.1:1 on page or surface */
+  --ui-text-on-tint: #5f5f64;
+
+  /* Accent */
   --ui-accent: #0071e3;
   --ui-accent-strong: #0059b8;
-  --ui-accent-soft: rgba(0, 113, 227, 0.14);
-  --ui-success: #2f8f4e;
-  --ui-success-strong: #256f3d;
-  --ui-success-soft: #eef8f1;
-  --ui-success-ring: rgba(47, 143, 78, 0.16);
-  --ui-warning: #b16a00;
-  --ui-warning-strong: #8d5300;
-  --ui-warning-soft: #fff6e8;
-  --ui-warning-ring: rgba(177, 106, 0, 0.16);
-  --ui-danger: #cf2c23;
-  --ui-danger-strong: #b3241c;
-  --ui-danger-soft: #fff1f0;
-  --ui-danger-ring: rgba(207, 44, 35, 0.14);
-  --ui-ring: rgba(0, 113, 227, 0.14);
-  --ui-shadow-soft: 0 1px 2px rgba(15, 23, 42, 0.05),
-    0 10px 24px rgba(15, 23, 42, 0.06);
-  --ui-shadow-panel: 0 24px 64px rgba(15, 23, 42, 0.08),
-    0 8px 20px rgba(15, 23, 42, 0.04);
-  --ui-radius-control: 0.9rem;
-  --ui-radius-panel: 1.75rem;
+  --ui-accent-text: #0066cc;
+  --ui-accent-soft: rgba(0, 113, 227, 0.1);
+
+  /* Status: the text colour on its soft fill passes AA */
+  --ui-success: #1f7a35;
+  --ui-success-strong: #17602a;
+  --ui-success-soft: rgba(52, 199, 89, 0.14);
+  --ui-success-ring: rgba(31, 122, 53, 0.28);
+  --ui-warning: #a35200;
+  --ui-warning-strong: #7f3f00;
+  --ui-warning-soft: rgba(255, 149, 0, 0.16);
+  --ui-warning-ring: rgba(163, 82, 0, 0.28);
+  --ui-danger: #c4151c;
+  --ui-danger-strong: #a01016;
+  --ui-danger-soft: rgba(255, 59, 48, 0.1);
+  --ui-danger-ring: rgba(196, 21, 28, 0.26);
+  --ui-pending: #8e8e93;
+
+  /* Focus */
+  --ui-focus: #0071e3;
+
+  /* Charts */
+  --ui-chart-neutral: #c7c7cc;
+  --ui-chart-neutral-strong: #636366;
+
+  /* Elevation */
+  --ui-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --ui-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --ui-shadow-overlay:
+    0 0 0 1px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.06),
+    0 16px 40px rgba(0, 0, 0, 0.1);
+
+  /* Radii */
+  --ui-radius-xs: 6px;
+  --ui-radius-sm: 8px;
+  --ui-radius-md: 12px;
+  --ui-radius-lg: 16px;
   --ui-radius-pill: 999px;
-  --ui-font-sans: "SF Pro Text", "SF Pro Display", -apple-system,
-    BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --ui-font-mono: "SF Mono", "SFMono-Regular", ui-monospace, Menlo, Monaco,
-    Consolas, monospace;
+
+  /* Layout */
+  --ui-sidebar-width: 240px;
+  --ui-topbar-height: 52px;
+  --ui-header-height: 56px;
+  --ui-toolbar-height: 48px;
+  --ui-content-narrow: 640px;
+  --ui-content-default: 1120px;
+  --ui-content-review: 880px;
+
+  /* Motion */
+  --ui-ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ui-ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ui-duration-fast: 120ms;
+  --ui-duration: 180ms;
+  --ui-duration-slow: 260ms;
+
+  /* Fonts */
+  --ui-font-sans:
+    "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  --ui-font-mono:
+    "SF Mono", "SFMono-Regular", ui-monospace, Menlo, Monaco, Consolas,
+    monospace;
 }
 
 @theme inline {
+  /* Colours */
   --color-page: var(--ui-page);
   --color-surface: var(--ui-surface);
   --color-surface-elevated: var(--ui-surface-elevated);
+  --color-surface-subtle: var(--ui-surface-subtle);
   --color-surface-muted: var(--ui-surface-muted);
+  --color-surface-sunken: var(--ui-surface-sunken);
+  --color-surface-hover: var(--ui-surface-hover);
+  --color-surface-selected: var(--ui-surface-selected);
+  --color-row-active: var(--ui-row-active);
+  --color-material: var(--ui-material);
+  --color-scrim: var(--ui-scrim);
   --color-border: var(--ui-border);
+  --color-border-subtle: var(--ui-border-subtle);
   --color-border-strong: var(--ui-border-strong);
+  --color-control-border: var(--ui-control-border);
   --color-text: var(--ui-text);
   --color-text-muted: var(--ui-text-muted);
+  --color-text-tertiary: var(--ui-text-tertiary);
+  --color-text-on-tint: var(--ui-text-on-tint);
   --color-accent: var(--ui-accent);
   --color-accent-strong: var(--ui-accent-strong);
+  --color-accent-text: var(--ui-accent-text);
   --color-accent-soft: var(--ui-accent-soft);
   --color-success: var(--ui-success);
   --color-success-strong: var(--ui-success-strong);
@@ -63,14 +137,118 @@
   --color-danger-strong: var(--ui-danger-strong);
   --color-danger-soft: var(--ui-danger-soft);
   --color-danger-ring: var(--ui-danger-ring);
-  --color-ring: var(--ui-ring);
-  --shadow-soft: var(--ui-shadow-soft);
-  --shadow-panel: var(--ui-shadow-panel);
-  --radius-control: var(--ui-radius-control);
-  --radius-panel: var(--ui-radius-panel);
+  --color-pending: var(--ui-pending);
+  --color-focus: var(--ui-focus);
+  --color-chart-neutral: var(--ui-chart-neutral);
+  --color-chart-neutral-strong: var(--ui-chart-neutral-strong);
+
+  /* Elevation */
+  --shadow-xs: var(--ui-shadow-xs);
+  --shadow-card: var(--ui-shadow-card);
+  --shadow-overlay: var(--ui-shadow-overlay);
+
+  /* Radii */
+  --radius-xs: var(--ui-radius-xs);
+  --radius-sm: var(--ui-radius-sm);
+  --radius-md: var(--ui-radius-md);
+  --radius-lg: var(--ui-radius-lg);
   --radius-pill: var(--ui-radius-pill);
+
+  /* Motion */
+  --ease-ui: var(--ui-ease);
+  --ease-ui-emphasized: var(--ui-ease-emphasized);
+
+  /* Fonts */
   --font-sans: var(--ui-font-sans);
   --font-mono: var(--ui-font-mono);
+}
+
+@theme {
+  /* Type scale. Weights are 400, 500 and 600 only. */
+  --text-title-1: 28px;
+  --text-title-1--line-height: 34px;
+  --text-title-1--letter-spacing: -0.021em;
+  --text-title-1--font-weight: 600;
+  --text-title-2: 20px;
+  --text-title-2--line-height: 26px;
+  --text-title-2--letter-spacing: -0.017em;
+  --text-title-2--font-weight: 600;
+  --text-title-3: 17px;
+  --text-title-3--line-height: 22px;
+  --text-title-3--letter-spacing: -0.012em;
+  --text-title-3--font-weight: 600;
+  --text-body: 14px;
+  --text-body--line-height: 20px;
+  --text-body--letter-spacing: -0.006em;
+  --text-callout: 13px;
+  --text-callout--line-height: 18px;
+  --text-callout--letter-spacing: 0em;
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+  --text-caption--letter-spacing: 0em;
+  --text-stat: 28px;
+  --text-stat--line-height: 32px;
+  --text-stat--letter-spacing: -0.02em;
+  --text-stat--font-weight: 600;
+
+  /* Entrance animations (wrapped in motion-safe: at the call site) */
+  --animate-fade-in: ui-fade-in var(--ui-duration) var(--ui-ease) both;
+  --animate-dialog-in: ui-dialog-in var(--ui-duration) var(--ui-ease-emphasized)
+    both;
+  --animate-sheet-right-in: ui-sheet-right-in var(--ui-duration-slow)
+    var(--ui-ease-emphasized) both;
+  --animate-sheet-bottom-in: ui-sheet-bottom-in var(--ui-duration-slow)
+    var(--ui-ease-emphasized) both;
+  --animate-toast-in: ui-toast-in 200ms var(--ui-ease-emphasized) both;
+  --animate-float-in: ui-float-in var(--ui-duration-fast) var(--ui-ease) both;
+  /* Pending nav link (useLinkStatus): starts late so fast navigations never flash. */
+  --animate-nav-pending: ui-nav-pending 700ms var(--ui-ease) 150ms infinite
+    alternate both;
+
+  @keyframes ui-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes ui-dialog-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+  }
+
+  @keyframes ui-sheet-right-in {
+    from {
+      transform: translateX(100%);
+    }
+  }
+
+  @keyframes ui-sheet-bottom-in {
+    from {
+      transform: translateY(100%);
+    }
+  }
+
+  @keyframes ui-toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+  }
+
+  @keyframes ui-float-in {
+    from {
+      opacity: 0;
+      transform: translateY(-2px);
+    }
+  }
+
+  @keyframes ui-nav-pending {
+    to {
+      opacity: 0.35;
+    }
+  }
 }
 
 @layer base {
@@ -84,18 +262,18 @@
     color: var(--ui-text);
   }
 
+  /* Modal dialogs keep the page from scrolling underneath them. */
+  html:has(dialog[open]:modal) {
+    overflow: hidden;
+  }
+
   body {
     min-height: 100vh;
-    background:
-      radial-gradient(
-        circle at top,
-        rgba(0, 113, 227, 0.08) 0%,
-        rgba(0, 113, 227, 0.02) 26%,
-        transparent 52%
-      ),
-      linear-gradient(180deg, #fbfbfc 0%, var(--ui-page) 100%);
+    background: var(--ui-page);
     color: var(--ui-text);
     font-family: var(--ui-font-sans);
+    font-size: 14px;
+    line-height: 20px;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -109,7 +287,6 @@
   h6 {
     color: var(--ui-text);
     font-weight: 600;
-    letter-spacing: -0.035em;
   }
 
   a {
@@ -140,7 +317,7 @@
 
   input::placeholder,
   textarea::placeholder {
-    color: var(--ui-text-muted);
+    color: var(--ui-text-tertiary);
   }
 
   input[type="checkbox"],
@@ -148,12 +325,14 @@
     accent-color: var(--ui-accent);
   }
 
-  :disabled {
+  :disabled,
+  [aria-disabled="true"] {
     cursor: not-allowed;
   }
 
   :focus-visible {
-    outline: none;
+    outline: 2px solid var(--ui-focus);
+    outline-offset: 2px;
   }
 
   ::selection {
@@ -163,7 +342,86 @@
 
   code,
   kbd,
-  pre {
+  pre,
+  samp {
     font-family: var(--ui-font-mono);
+  }
+
+  /* Native dialogs: the backdrop falls back to a literal for browsers that do
+     not let ::backdrop inherit custom properties. */
+  dialog::backdrop {
+    background: var(--ui-scrim, rgba(0, 0, 0, 0.28));
+  }
+
+  /* Custom checkbox glyphs (see components/ui/checkbox.tsx). */
+  .ui-checkbox:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 8.5 2.5 2.5L12 5.5'/%3E%3C/svg%3E");
+  }
+
+  .ui-checkbox:indeterminate {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M4.5 8h7'/%3E%3C/svg%3E");
+  }
+}
+
+/* Horizontal scroll affordance for wide tables: the edge that has more
+   content fades out (28px, as in the review toolbar). A scroll-driven
+   animation moves the fades, so a region with no overflow (an inactive
+   timeline) keeps both at 0px and shows no fade. Browsers without
+   scroll-driven animations get a plain scroll region. */
+@property --ui-scroll-fade-start {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --ui-scroll-fade-end {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@supports (animation-timeline: scroll()) {
+  .scroll-fade-x {
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      black var(--ui-scroll-fade-start),
+      black calc(100% - var(--ui-scroll-fade-end)),
+      transparent
+    );
+    /* The shorthand resets animation-timeline, so the timeline comes after. */
+    animation: ui-scroll-fade-x linear both;
+    animation-timeline: scroll(x self);
+  }
+
+  @keyframes ui-scroll-fade-x {
+    0% {
+      --ui-scroll-fade-start: 0px;
+      --ui-scroll-fade-end: 28px;
+    }
+
+    8% {
+      --ui-scroll-fade-start: 28px;
+    }
+
+    92% {
+      --ui-scroll-fade-end: 28px;
+    }
+
+    100% {
+      --ui-scroll-fade-start: 28px;
+      --ui-scroll-fade-end: 0px;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

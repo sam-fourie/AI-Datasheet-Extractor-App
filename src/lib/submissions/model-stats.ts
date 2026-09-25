@@ -1,4 +1,5 @@
 import { OPENAI_MODEL_IDS, OPENAI_REASONING_EFFORTS } from "@/lib/ai/models";
+import { isScoredAgreement } from "@/lib/submissions/agreement";
 import { deriveSubmissionAccuracyPercentage } from "@/lib/submissions/review";
 import type { SubmissionSummary } from "@/lib/submissions/types";
 
@@ -19,7 +20,11 @@ export type ModelRunStats = {
   costRuns: number;
   key: string;
   latencyRuns: number;
+  /** Median model-call latency over runs with latency data. */
+  medianLatencyMs: number | null;
   model: string;
+  /** 90th percentile latency (linear interpolation) over runs with latency data. */
+  p90LatencyMs: number | null;
   reasoningEffort: string | null;
   rerunRuns: number;
   reviewedRuns: number;
@@ -33,6 +38,27 @@ function average(values: number[]) {
   }
 
   return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+/**
+ * Percentile with linear interpolation between closest ranks (the common
+ * "type 7" definition), so the 50th percentile is the usual median.
+ */
+export function percentile(values: readonly number[], fraction: number): number | null {
+  const sorted = values
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => left - right);
+
+  if (sorted.length === 0) {
+    return null;
+  }
+
+  const clamped = Math.min(Math.max(fraction, 0), 1);
+  const position = (sorted.length - 1) * clamped;
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
 }
 
 function roundTo(value: number | null, fractionDigits: number) {
@@ -63,10 +89,15 @@ export function sortModelIds(modelIds: string[]) {
   );
 }
 
+export type ModelRunInput = Pick<
+  SubmissionSummary,
+  "comparison" | "providerMeta" | "reviewDecisionCounts" | "reviewStatus"
+>;
+
 export function summarizeModelRuns(
-  submissions: SubmissionSummary[],
+  submissions: ModelRunInput[],
 ): ModelRunStats[] {
-  const groups = new Map<string, SubmissionSummary[]>();
+  const groups = new Map<string, ModelRunInput[]>();
 
   for (const submission of submissions) {
     const effort = submission.providerMeta.reasoningEffort ?? "";
@@ -87,17 +118,11 @@ export function summarizeModelRuns(
       .filter((value): value is number => value !== null);
     const agreements = group
       .map((submission) => submission.comparison?.agreement ?? null)
-      .map((agreement) =>
-        agreement &&
-        agreement.basis === "reviewed" &&
-        agreement.baselineReviewStatus === "reviewed"
-          ? agreement.agreementPercentage
-          : null,
-      )
-      .filter((value): value is number => value !== null);
+      .filter(isScoredAgreement)
+      .map((agreement) => agreement.agreementPercentage);
     const latencies = group
       .map((submission) => submission.providerMeta.latencyMs)
-      .filter((value): value is number => typeof value === "number");
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
     const costs = group
       .map((submission) => submission.providerMeta.estimatedCostUsd)
       .filter((value): value is number => typeof value === "number");
@@ -113,7 +138,9 @@ export function summarizeModelRuns(
       costRuns: costs.length,
       key,
       latencyRuns: latencies.length,
+      medianLatencyMs: roundTo(percentile(latencies, 0.5), 0),
       model: first.providerMeta.model,
+      p90LatencyMs: roundTo(percentile(latencies, 0.9), 0),
       reasoningEffort: first.providerMeta.reasoningEffort ?? null,
       rerunRuns,
       reviewedRuns: accuracies.length,

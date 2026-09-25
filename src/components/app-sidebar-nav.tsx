@@ -1,26 +1,34 @@
 "use client";
 
-import type { SVGProps } from "react";
-
+import type { ReactNode } from "react";
+import { ChartColumn, FilePlus2, Rows3, type LucideIcon } from "lucide-react";
+import { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 
 import { AppLink } from "@/components/app-link";
-import { cn } from "@/components/ui/cn";
+import { cn } from "@/components/ui";
 
-const primaryLinks = [
-  {
-    href: "/",
-    icon: WorkbenchIcon,
-    label: "Intake Workbench",
-  },
+export type PrimaryNavItem = {
+  href: string;
+  icon: LucideIcon;
+  /** Sidebar label. */
+  label: string;
+  /** Compact label for the mobile top bar. */
+  shortLabel: string;
+};
+
+export const PRIMARY_NAV_ITEMS: readonly PrimaryNavItem[] = [
+  { href: "/", icon: FilePlus2, label: "New extraction", shortLabel: "New" },
   {
     href: "/submissions",
-    icon: SubmissionsIcon,
+    icon: Rows3,
     label: "Submissions",
+    shortLabel: "Submissions",
   },
+  { href: "/reports", icon: ChartColumn, label: "Reports", shortLabel: "Reports" },
 ];
 
-function isActiveLink(pathname: string, href: string) {
+export function isPrimaryNavItemActive(pathname: string, href: string) {
   if (href === "/") {
     return pathname === "/";
   }
@@ -28,72 +36,71 @@ function isActiveLink(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function WorkbenchIcon(props: SVGProps<SVGSVGElement>) {
+/**
+ * A primary nav item's icon. Must render inside the item's link: while that
+ * navigation is pending (slow network, not yet prefetched) the icon pulses.
+ * The animation starts late, so fast navigations show nothing, and reduced
+ * motion leaves it dimmed instead of pulsing.
+ */
+export function PrimaryNavIcon({
+  className,
+  icon: Icon,
+  isActive,
+}: {
+  className?: string;
+  icon: LucideIcon;
+  isActive: boolean;
+}) {
+  const { pending } = useLinkStatus();
+
   return (
-    <svg
+    <Icon
       aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="1.75"
-      viewBox="0 0 24 24"
-      {...props}
-    >
-      <rect x="3.75" y="3.75" width="6.5" height="6.5" rx="1.5" />
-      <rect x="13.75" y="3.75" width="6.5" height="6.5" rx="1.5" />
-      <rect x="3.75" y="13.75" width="6.5" height="6.5" rx="1.5" />
-      <rect x="13.75" y="13.75" width="6.5" height="6.5" rx="1.5" />
-    </svg>
+      className={cn(
+        "size-4 shrink-0",
+        isActive ? "text-accent" : undefined,
+        pending ? "animate-nav-pending" : undefined,
+        className,
+      )}
+    />
   );
 }
 
-function SubmissionsIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="1.75"
-      viewBox="0 0 24 24"
-      {...props}
-    >
-      <path d="M8.25 4.75h8A1.75 1.75 0 0 1 18 6.5v9.75A1.75 1.75 0 0 1 16.25 18h-8a1.75 1.75 0 0 1-1.75-1.75V6.5a1.75 1.75 0 0 1 1.75-1.75Z" />
-      <path d="M10.75 10h3.5" />
-      <path d="M10.75 13.5h3.5" />
-      <path d="M5.75 8V17a2 2 0 0 0 2 2h8.5" />
-    </svg>
-  );
-}
+export type AppSidebarNavProps = {
+  /** Slot rendered at the right of the Submissions item (the review queue badge). */
+  submissionsBadge?: ReactNode;
+};
 
-export function AppSidebarNav() {
+/** Desktop primary navigation (spec §1.3). */
+export function AppSidebarNav({ submissionsBadge }: AppSidebarNavProps) {
   const pathname = usePathname();
 
   return (
-    <nav aria-label="Primary" className="space-y-1">
-      {primaryLinks.map((link) => {
-        const isActive = isActiveLink(pathname, link.href);
-        const Icon = link.icon;
+    <nav aria-label="Primary">
+      <ul className="flex flex-col gap-0.5">
+        {PRIMARY_NAV_ITEMS.map((item) => {
+          const isActive = isPrimaryNavItemActive(pathname, item.href);
 
-        return (
-          <AppLink
-            key={link.href}
-            aria-current={isActive ? "page" : undefined}
-            className={cn(
-              "flex items-center gap-3 rounded-control px-3 py-2.5 text-sm font-medium transition duration-150 ease-out",
-              isActive
-                ? "bg-surface text-text shadow-soft ring-1 ring-inset ring-border"
-                : "text-text-muted hover:bg-surface-muted hover:text-text",
-            )}
-            href={link.href}
-          >
-            <Icon className="size-5 shrink-0" />
-            <span className="truncate">{link.label}</span>
-          </AppLink>
-        );
-      })}
+          return (
+            <li key={item.href}>
+              <AppLink
+                aria-current={isActive ? "page" : undefined}
+                className={cn(
+                  "flex h-8 items-center gap-2 rounded-sm px-2.5 text-body font-medium transition-colors duration-(--ui-duration-fast) ease-ui pointer-coarse:h-11",
+                  isActive
+                    ? "bg-surface-selected text-text"
+                    : "text-text-muted hover:bg-surface-hover hover:text-text",
+                )}
+                href={item.href}
+              >
+                <PrimaryNavIcon icon={item.icon} isActive={isActive} />
+                <span className="min-w-0 truncate">{item.label}</span>
+                {item.href === "/submissions" ? submissionsBadge : null}
+              </AppLink>
+            </li>
+          );
+        })}
+      </ul>
     </nav>
   );
 }

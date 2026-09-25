@@ -3,9 +3,18 @@ import {
   buildSubmissionResolvedView,
   countReviewDecisions,
   deriveSubmissionReviewStatus,
+  getRowDecision,
+  measurementRowKey,
+  PACKAGE_ROW_KEY,
+  pinRowKey,
+  rowKeyOf,
+  type ReviewRowRef,
 } from "@/lib/submissions/review";
 import type {
   AgreementOutcome,
+  BaselineRunHint,
+  BaselineRunHints,
+  SubmissionModelRun,
   ExtractionSnapshot,
   ResolvedMeasurementRow,
   ResolvedPinRow,
@@ -152,15 +161,23 @@ function describeMeasurement(row: Pick<MeasurementFieldRow, "status" | "value">)
   return row.status === "Not found" ? NOT_FOUND_LABEL : row.value;
 }
 
+// Row keys are defined in review.ts (so the review rules can use them without
+// an import cycle) and re-exported here for agreement consumers.
+export { measurementRowKey, PACKAGE_ROW_KEY, pinRowKey };
+
 function compareMeasurementRow(
   baseline: ResolvedMeasurementRow,
-  rerun: MeasurementFieldRow | undefined,
+  baselineIndex: number,
+  rerun: { index: number; row: MeasurementFieldRow } | undefined,
 ): SubmissionAgreementRow {
   const baselineValue = describeMeasurement(baseline);
+  const key = measurementRowKey(baseline.field);
 
   if (!rerun) {
     return {
+      baselineIndex,
       baselineValue,
+      key,
       kind: "measurement",
       label: baseline.field,
       outcome: "mismatch",
@@ -168,35 +185,41 @@ function compareMeasurementRow(
     };
   }
 
-  const rerunValue = describeMeasurement(rerun);
+  const rerunValue = describeMeasurement(rerun.row);
   const baselineNotFound = baseline.status === "Not found";
-  const rerunNotFound = rerun.status === "Not found";
+  const rerunNotFound = rerun.row.status === "Not found";
   const outcome: AgreementOutcome =
     baselineNotFound || rerunNotFound
       ? baselineNotFound && rerunNotFound
         ? "match"
         : "mismatch"
-      : compareMeasurementText(baseline.value, rerun.value);
+      : compareMeasurementText(baseline.value, rerun.row.value);
 
   return {
+    baselineIndex,
     baselineValue,
+    key,
     kind: "measurement",
     label: baseline.field,
     outcome,
+    rerunIndex: rerun.index,
     rerunValue,
   };
 }
 
 function comparePinRow(
   baseline: ResolvedPinRow,
-  rerun: PinRow | undefined,
+  rerun: { index: number; row: PinRow } | undefined,
 ): SubmissionAgreementRow {
   return {
+    baselineIndex: baseline.pinIndex,
     baselineValue: baseline.pinName,
+    key: pinRowKey(baseline.pinIndex),
     kind: "pin",
     label: `Pin ${baseline.pinNumber}`,
-    outcome: rerun ? compareIdentifiers(baseline.pinName, rerun.pinName) : "mismatch",
-    rerunValue: rerun ? rerun.pinName : MISSING_LABEL,
+    outcome: rerun ? compareIdentifiers(baseline.pinName, rerun.row.pinName) : "mismatch",
+    ...(rerun ? { rerunIndex: rerun.index } : {}),
+    rerunValue: rerun ? rerun.row.pinName : MISSING_LABEL,
   };
 }
 
@@ -211,23 +234,26 @@ export function computeSubmissionAgreement(
   const includeRow = (reviewStatus: ResolvedMeasurementRow["reviewStatus"]) =>
     basis === "unreviewed" || reviewStatus !== "pending";
   const rerunFieldMap = new Map(
-    rerunExtraction.fields.map((field) => [field.field.toLowerCase(), field] as const),
+    rerunExtraction.fields.map(
+      (field, index) => [field.field.toLowerCase(), { index, row: field }] as const,
+    ),
   );
-  const rerunPinMap = new Map<string, PinRow>();
+  const rerunPinMap = new Map<string, { index: number; row: PinRow }>();
 
-  for (const pinRow of rerunExtraction.pinRows) {
+  rerunExtraction.pinRows.forEach((pinRow, index) => {
     const key = normalizeIdentifier(pinRow.pinNumber);
 
     if (!rerunPinMap.has(key)) {
-      rerunPinMap.set(key, pinRow);
+      rerunPinMap.set(key, { index, row: pinRow });
     }
-  }
+  });
 
   const rows: SubmissionAgreementRow[] = [];
 
   if (includeRow(resolved.packageSelection.reviewStatus)) {
     rows.push({
       baselineValue: resolved.packageSelection.selectedPackage,
+      key: PACKAGE_ROW_KEY,
       kind: "package",
       label: "Package",
       outcome: compareIdentifiers(
@@ -238,13 +264,13 @@ export function computeSubmissionAgreement(
     });
   }
 
-  for (const field of resolved.fields) {
+  resolved.fields.forEach((field, index) => {
     if (includeRow(field.reviewStatus)) {
       rows.push(
-        compareMeasurementRow(field, rerunFieldMap.get(field.field.toLowerCase())),
+        compareMeasurementRow(field, index, rerunFieldMap.get(field.field.toLowerCase())),
       );
     }
-  }
+  });
 
   for (const pinRow of resolved.pinRows) {
     if (includeRow(pinRow.reviewStatus)) {
@@ -270,5 +296,199 @@ export function computeSubmissionAgreement(
     mismatches,
     partialMatches,
     rows,
+  };
+}
+
+/**
+ * True only when the agreement was scored against a FULLY reviewed baseline.
+ * Use this wherever a coloured agreement score is shown or aggregated.
+ */
+export function isScoredAgreement(
+  agreement: SubmissionAgreement | null | undefined,
+): agreement is SubmissionAgreement & { agreementPercentage: number } {
+  return (
+    agreement !== null &&
+    agreement !== undefined &&
+    agreement.basis === "reviewed" &&
+    agreement.baselineReviewStatus === "reviewed" &&
+    agreement.agreementPercentage !== null
+  );
+}
+
+/**
+ * For a baseline page: per baseline row key, how the loaded re-runs compare on
+ * that row. Every re-run with an agreement counts, scored or not (the hint
+ * says how many runs). `differs` counts mismatches, `partial` partial matches.
+ * Whether a hint flags the row is decided by runHintDisagrees in review.ts.
+ */
+export function buildBaselineRunHints(
+  runs: readonly SubmissionModelRun[],
+): BaselineRunHints {
+  const hints: BaselineRunHints = {};
+
+  for (const run of runs) {
+    if (run.isBaseline || !run.agreement) {
+      continue;
+    }
+
+    for (const row of run.agreement.rows) {
+      const hint = (hints[row.key] ??= { differs: 0, partial: 0, runs: 0 });
+
+      hint.runs += 1;
+
+      if (row.outcome === "mismatch") {
+        hint.differs += 1;
+      } else if (row.outcome === "partial") {
+        hint.partial += 1;
+      }
+    }
+  }
+
+  return hints;
+}
+
+/**
+ * "2 of 4 runs differ": mismatching runs only (partial matches are not
+ * counted), or null when no run mismatches. Shown only alongside the
+ * runsDisagree attention reason (see runHintDisagrees).
+ */
+export function describeRunHint(hint: BaselineRunHint | null | undefined): string | null {
+  if (!hint || hint.differs === 0) {
+    return null;
+  }
+
+  return `${hint.differs} of ${hint.runs} ${hint.runs === 1 ? "run differs" : "runs differ"}`;
+}
+
+/* ----------------------- Re-run row mapping (review UI) ----------------------- */
+
+/**
+ * Maps an agreement row (keyed by BASELINE row) to the matching row of the
+ * re-run extraction via `rerunIndex`. Null when the run has no such row.
+ */
+export function agreementRowToRerunRef(
+  row: SubmissionAgreementRow,
+  rerunExtraction: ExtractionSnapshot,
+): ReviewRowRef | null {
+  switch (row.kind) {
+    case "package":
+      return { kind: "package" };
+    case "measurement": {
+      const field =
+        row.rerunIndex !== undefined ? rerunExtraction.fields[row.rerunIndex] : undefined;
+
+      return field ? { field: field.field, kind: "measurement" } : null;
+    }
+    case "pin":
+      return row.rerunIndex !== undefined && row.rerunIndex < rerunExtraction.pinRows.length
+        ? { kind: "pin", pinIndex: row.rerunIndex }
+        : null;
+  }
+}
+
+/**
+ * Agreement rows keyed by the RE-RUN's row key (rowKeyOf), so a re-run page
+ * can look up each of its own rows' outcome. The first agreement row wins
+ * when two baseline rows map to the same re-run row.
+ */
+export function indexAgreementRowsByRerunKey(
+  agreement: SubmissionAgreement | null | undefined,
+  rerunExtraction: ExtractionSnapshot,
+): Map<string, SubmissionAgreementRow> {
+  const byKey = new Map<string, SubmissionAgreementRow>();
+
+  for (const row of agreement?.rows ?? []) {
+    const ref = agreementRowToRerunRef(row, rerunExtraction);
+
+    if (ref) {
+      const key = rowKeyOf(ref);
+
+      if (!byKey.has(key)) {
+        byKey.set(key, row);
+      }
+    }
+  }
+
+  return byKey;
+}
+
+/** Baseline rows the run has no counterpart for ("Only in baseline: Pin 8"). */
+export function listOnlyInBaselineRows(
+  agreement: SubmissionAgreement | null | undefined,
+  rerunExtraction: ExtractionSnapshot,
+): SubmissionAgreementRow[] {
+  return (agreement?.rows ?? []).filter(
+    (row) => row.kind !== "package" && agreementRowToRerunRef(row, rerunExtraction) === null,
+  );
+}
+
+/**
+ * Re-run rows that match the baseline and are still pending: the scope of
+ * "Confirm N matching the reviewed baseline". Partials are excluded. Only
+ * offer it when isScoredAgreement(agreement) holds.
+ */
+export function listMatchingPendingRefs(
+  agreement: SubmissionAgreement | null | undefined,
+  rerunExtraction: ExtractionSnapshot,
+  review: SubmissionHumanReview,
+): ReviewRowRef[] {
+  const refs: ReviewRowRef[] = [];
+  const seen = new Set<string>();
+
+  for (const row of agreement?.rows ?? []) {
+    if (row.outcome !== "match") {
+      continue;
+    }
+
+    const ref = agreementRowToRerunRef(row, rerunExtraction);
+
+    if (!ref) {
+      continue;
+    }
+
+    const key = rowKeyOf(ref);
+
+    if (!seen.has(key) && getRowDecision(review, ref) === "pending") {
+      seen.add(key);
+      refs.push(ref);
+    }
+  }
+
+  return refs;
+}
+
+/**
+ * Whether an agreement is shown as a coloured score or as neutral text
+ * (addendum C). `scored` is isScoredAgreement(agreement); when false, show
+ * `text` in neutral grey.
+ */
+export function describeAgreementBasis(
+  agreement: SubmissionAgreement | null | undefined,
+  options: { baselineMissing?: boolean } = {},
+): { scored: boolean; text: string; value: number | null } {
+  if (options.baselineMissing) {
+    return { scored: false, text: "Baseline deleted", value: null };
+  }
+
+  if (!agreement) {
+    return { scored: false, text: "Not scored", value: null };
+  }
+
+  if (isScoredAgreement(agreement)) {
+    return {
+      scored: true,
+      text: `${agreement.agreementPercentage}% agreement`,
+      value: agreement.agreementPercentage,
+    };
+  }
+
+  if (agreement.basis === "unreviewed") {
+    return { scored: false, text: "vs unreviewed baseline", value: agreement.agreementPercentage };
+  }
+
+  return {
+    scored: false,
+    text: `vs partly reviewed baseline (${agreement.baselineReviewedDecisions} of ${agreement.baselineTotalDecisions})`,
+    value: agreement.agreementPercentage,
   };
 }

@@ -1,13 +1,19 @@
+import { requireAuthorizedRequest } from "@/app/api/_lib/access";
 import { MongoConfigError } from "@/lib/mongodb";
 import {
   deleteSubmission,
   getSubmissionDetail,
   hasRetainedUploadSource,
 } from "@/lib/submissions";
+import { isUrlCacheObjectKey } from "@/lib/pdf-cache";
 import {
   deleteObject,
   R2ConfigError,
 } from "@/lib/r2";
+import {
+  deleteSubmissionWithRuns,
+  isValidSubmissionId,
+} from "@/lib/submissions/repository";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -42,15 +48,56 @@ function toRouteError(error: unknown) {
   return new RouteError("Unexpected submission deletion failure.", 500);
 }
 
+/**
+ * `?cascade=runs` deletes the submission and every re-run compared against it:
+ * Mongo documents first, then their retained upload objects best-effort
+ * (addendum Q). URL-cache objects are shared and never deleted.
+ */
+async function deleteWithRuns(submissionId: string) {
+  const { deletedIds, uploadObjectKeys } = await deleteSubmissionWithRuns(submissionId);
+
+  if (deletedIds.length === 0) {
+    throw new RouteError("Submission not found.", 404);
+  }
+
+  for (const objectKey of uploadObjectKeys) {
+    if (isUrlCacheObjectKey(objectKey)) {
+      continue;
+    }
+
+    try {
+      await deleteObject(objectKey);
+    } catch (error) {
+      console.warn(`Could not delete R2 object ${objectKey}.`, error);
+    }
+  }
+
+  return Response.json({
+    deletedIds,
+    submissionId,
+    success: true,
+  });
+}
+
 export async function DELETE(
-  _request: Request,
+  request: Request,
   context: RouteContext<"/api/submissions/[submissionId]">,
 ) {
+  const unauthorized = requireAuthorizedRequest(request);
+
+  if (unauthorized) {
+    return unauthorized;
+  }
+
   try {
     const { submissionId } = await context.params;
 
-    if (!submissionId || typeof submissionId !== "string") {
+    if (!isValidSubmissionId(submissionId)) {
       throw new RouteError("A valid submission id is required.", 400);
+    }
+
+    if (new URL(request.url).searchParams.get("cascade") === "runs") {
+      return await deleteWithRuns(submissionId);
     }
 
     const existingSubmission = await getSubmissionDetail(submissionId);
@@ -70,6 +117,7 @@ export async function DELETE(
     }
 
     return Response.json({
+      deletedIds: [submissionId],
       submissionId,
       success: true,
     });

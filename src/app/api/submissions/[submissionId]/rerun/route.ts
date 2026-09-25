@@ -1,5 +1,7 @@
 import { ObjectId } from "mongodb";
+import { after } from "next/server";
 
+import { requireAuthorizedRequest } from "@/app/api/_lib/access";
 import { extractDatasheet } from "@/lib/ai";
 import { ExtractionTimeoutError } from "@/lib/ai/errors";
 import {
@@ -8,6 +10,11 @@ import {
 } from "@/lib/ai/settings";
 import { MongoConfigError } from "@/lib/mongodb";
 import { looksLikePdf, normalizePdfFileName } from "@/lib/pdf";
+import {
+  cacheUrlSourcePdf,
+  readCachedUrlSourcePdf,
+  sha256Hex,
+} from "@/lib/pdf-cache";
 import { PdfSourceError, readPdfFromUrl } from "@/lib/pdf-source";
 import {
   buildSubmissionPdfObjectKey,
@@ -21,8 +28,10 @@ import {
   createSubmission,
   getSubmissionDetail,
   hasRetainedUploadSource,
+  isValidSubmissionId,
   type SubmissionDetail,
   type SubmissionIntakeSnapshot,
+  type UrlSourceMeta,
 } from "@/lib/submissions";
 
 export const runtime = "nodejs";
@@ -38,7 +47,16 @@ class RouteError extends Error {
   }
 }
 
+type UrlCacheWrite = {
+  contentSha256: string | null;
+  normalizedUrl: string;
+};
+
 type ResolvedPdf = {
+  /** sha256 of the bytes this re-run extracts, for URL sources. */
+  contentSha256: string | null;
+  /** Cache keys to write the bytes to after the response (write-through). */
+  cacheWrites: UrlCacheWrite[];
   pdfBytes: Uint8Array;
   pdfFileName: string;
   sourceObjectKey: string | null;
@@ -83,17 +101,86 @@ function resolveRequestedExtractionSettings(value: Record<string, unknown>) {
   }
 }
 
-async function readSubmissionPdf(submission: SubmissionDetail): Promise<ResolvedPdf> {
-  const sourceMeta = submission.intake.sourceMeta;
+async function readCachedCopy(normalizedUrl: string, contentSha256: string | null) {
+  try {
+    return await readCachedUrlSourcePdf(normalizedUrl, contentSha256);
+  } catch (error) {
+    if (error instanceof R2ConfigError) {
+      throw error;
+    }
 
-  if (sourceMeta.kind === "url") {
-    const source = await readPdfFromUrl(sourceMeta.normalizedUrl);
+    console.warn("Could not read the cached URL-source PDF.", error);
+
+    return null;
+  }
+}
+
+/**
+ * URL sources (addendum F): with `contentSha256`, read the exact cached
+ * revision first and fall back to the vendor; without it, try the vendor first
+ * and fall back to the legacy cached copy. Bytes fetched from the vendor are
+ * written through to the cache after the response.
+ */
+async function readUrlSourcePdf(sourceMeta: UrlSourceMeta): Promise<ResolvedPdf> {
+  const { normalizedUrl } = sourceMeta;
+  const pdfFileName = normalizePdfFileName(sourceMeta.pdfFileName);
+  const fromCache = (bytes: Uint8Array): ResolvedPdf => {
+    const digest = sha256Hex(bytes);
 
     return {
+      cacheWrites: [{ contentSha256: digest, normalizedUrl }],
+      contentSha256: digest,
+      pdfBytes: bytes,
+      pdfFileName,
+      sourceObjectKey: null,
+    };
+  };
+
+  if (sourceMeta.contentSha256) {
+    const exact = await readCachedCopy(normalizedUrl, sourceMeta.contentSha256);
+
+    if (exact) {
+      return { ...fromCache(exact.bytes), cacheWrites: [] };
+    }
+  }
+
+  let vendorError: unknown;
+
+  try {
+    const source = await readPdfFromUrl(normalizedUrl);
+    const digest = sha256Hex(source.pdfBytes);
+
+    return {
+      cacheWrites: [
+        { contentSha256: digest, normalizedUrl },
+        // Legacy submissions also get a viewer copy under the legacy key.
+        ...(sourceMeta.contentSha256 ? [] : [{ contentSha256: null, normalizedUrl }]),
+      ],
+      contentSha256: digest,
       pdfBytes: source.pdfBytes,
       pdfFileName: source.pdfFileName,
       sourceObjectKey: null,
     };
+  } catch (error) {
+    vendorError = error;
+  }
+
+  if (!sourceMeta.contentSha256) {
+    const latest = await readCachedCopy(normalizedUrl, null);
+
+    if (latest) {
+      return fromCache(latest.bytes);
+    }
+  }
+
+  throw vendorError;
+}
+
+async function readSubmissionPdf(submission: SubmissionDetail): Promise<ResolvedPdf> {
+  const sourceMeta = submission.intake.sourceMeta;
+
+  if (sourceMeta.kind === "url") {
+    return readUrlSourcePdf(sourceMeta);
   }
 
   if (!hasRetainedUploadSource(sourceMeta)) {
@@ -116,6 +203,8 @@ async function readSubmissionPdf(submission: SubmissionDetail): Promise<Resolved
   }
 
   return {
+    cacheWrites: [],
+    contentSha256: null,
     pdfBytes,
     pdfFileName: normalizePdfFileName(sourceMeta.fileName),
     sourceObjectKey: sourceMeta.objectKey,
@@ -126,6 +215,12 @@ export async function POST(
   request: Request,
   context: RouteContext<"/api/submissions/[submissionId]/rerun">,
 ) {
+  const unauthorized = requireAuthorizedRequest(request);
+
+  if (unauthorized) {
+    return unauthorized;
+  }
+
   let copiedObjectKey: string | null = null;
 
   try {
@@ -135,7 +230,7 @@ export async function POST(
 
     const { submissionId } = await context.params;
 
-    if (!submissionId || typeof submissionId !== "string") {
+    if (!isValidSubmissionId(submissionId)) {
       throw new RouteError("A valid submission id is required.", 400);
     }
 
@@ -173,6 +268,18 @@ export async function POST(
       requestedFields: [...sourceSubmission.intake.requestedFields],
     };
 
+    if (sourceSubmission.intake.sourceMeta.kind === "url" && pdf.contentSha256) {
+      // Record the revision this run actually extracted (it can differ from the
+      // source's when the cache missed and the vendor has changed the file).
+      intake = {
+        ...intake,
+        sourceMeta: {
+          ...sourceSubmission.intake.sourceMeta,
+          contentSha256: pdf.contentSha256,
+        },
+      };
+    }
+
     if (pdf.sourceObjectKey && sourceSubmission.intake.sourceMeta.kind === "upload") {
       const newObjectKey = buildSubmissionPdfObjectKey(
         newSubmissionId,
@@ -200,6 +307,20 @@ export async function POST(
     });
 
     copiedObjectKey = null;
+
+    if (pdf.cacheWrites.length > 0) {
+      const { cacheWrites, pdfBytes } = pdf;
+
+      after(async () => {
+        for (const write of cacheWrites) {
+          try {
+            await cacheUrlSourcePdf({ ...write, pdfBytes });
+          } catch (error) {
+            console.warn("Could not cache the URL-source PDF.", error);
+          }
+        }
+      });
+    }
 
     return Response.json(submission satisfies SubmissionDetail);
   } catch (error) {

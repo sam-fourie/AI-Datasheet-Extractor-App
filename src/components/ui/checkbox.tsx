@@ -1,8 +1,8 @@
-import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import type { ComponentPropsWithRef, ReactNode } from "react";
 
 import { cn } from "./cn";
 
-export type CheckboxProps = Omit<ComponentPropsWithoutRef<"input">, "type"> & {
+export type CheckboxProps = Omit<ComponentPropsWithRef<"input">, "type"> & {
   hint?: ReactNode;
   invalid?: boolean;
   label?: ReactNode;
@@ -21,8 +21,8 @@ export function Checkbox({
       {...props}
       aria-invalid={invalid || props["aria-invalid"]}
       className={cn(
-        "mt-0.5 size-5 rounded-[0.45rem] border border-border-strong bg-surface shadow-soft outline-none transition focus-visible:ring-4 focus-visible:ring-ring disabled:opacity-70",
-        invalid && "border-danger focus-visible:ring-danger-ring",
+        "ui-checkbox mt-0.5 size-4 shrink-0 appearance-none rounded-[4px] border border-control-border bg-surface bg-center bg-no-repeat transition-colors duration-(--ui-duration-fast) ease-ui checked:border-accent checked:bg-accent indeterminate:border-accent indeterminate:bg-accent hover:border-text-muted checked:hover:border-accent-strong checked:hover:bg-accent-strong disabled:border-border-strong disabled:bg-surface-muted disabled:checked:bg-pending",
+        invalid && "border-danger",
         className,
       )}
       disabled={disabled}
@@ -37,18 +37,18 @@ export function Checkbox({
   return (
     <label
       className={cn(
-        "flex cursor-pointer items-start gap-3 text-sm",
-        disabled && "cursor-not-allowed opacity-60",
+        "flex cursor-pointer items-start gap-2.5 text-body pointer-coarse:min-h-11 pointer-coarse:items-center",
+        disabled && "cursor-not-allowed",
       )}
     >
       {control}
-      <span className="space-y-1">
+      <span className={cn("min-w-0 space-y-0.5", disabled && "opacity-60")}>
         {label ? (
-          <span className="block font-medium tracking-[-0.01em] text-text">
-            {label}
-          </span>
+          <span className="block font-medium text-text">{label}</span>
         ) : null}
-        {hint ? <span className="block text-text-muted">{hint}</span> : null}
+        {hint ? (
+          <span className="block text-callout text-text-muted">{hint}</span>
+        ) : null}
       </span>
     </label>
   );

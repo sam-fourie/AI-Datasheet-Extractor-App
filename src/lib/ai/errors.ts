@@ -6,3 +6,11 @@ export class ExtractionTimeoutError extends Error {
     this.name = "ExtractionTimeoutError";
   }
 }
+
+/** Thrown when the caller's AbortSignal (e.g. the client cancelling) stops the extraction. */
+export class ExtractionCancelledError extends Error {
+  constructor() {
+    super("The extraction was cancelled.");
+    this.name = "ExtractionCancelledError";
+  }
+}

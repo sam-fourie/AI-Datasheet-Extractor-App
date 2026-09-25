@@ -5,6 +5,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { CircleAlert } from "lucide-react";
+
 import { cn } from "./cn";
 import { Label } from "./label";
 
@@ -57,13 +59,14 @@ export function Field({
         element.props["aria-describedby"],
         describedBy,
       ),
-      "aria-invalid": element.props["aria-invalid"] ?? (error ? true : undefined),
+      "aria-invalid":
+        element.props["aria-invalid"] ?? (error ? true : undefined),
       id: element.props.id ?? controlId,
     });
   }
 
   return (
-    <div className={cn("space-y-3", className)}>
+    <div className={cn("min-w-0 space-y-1.5", className)}>
       {label ? (
         <Label htmlFor={controlId}>
           {label}
@@ -76,13 +79,17 @@ export function Field({
       ) : null}
       {content}
       {hint ? (
-        <p id={hintId} className="text-sm leading-6 text-text-muted">
+        <p id={hintId} className="text-caption text-text-muted">
           {hint}
         </p>
       ) : null}
       {error ? (
-        <p id={errorId} className="text-sm font-medium leading-6 text-danger">
-          {error}
+        <p
+          id={errorId}
+          className="flex items-start gap-1 text-caption text-danger"
+        >
+          <CircleAlert aria-hidden="true" className="mt-0.5 size-3 shrink-0" />
+          <span>{error}</span>
         </p>
       ) : null}
     </div>

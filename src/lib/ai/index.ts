@@ -18,6 +18,8 @@ export type ExtractionInput = {
   pdfFileName: string;
   reasoningEffort: OpenAIReasoningEffort;
   requestedFields: readonly string[];
+  /** Caller cancellation (e.g. request.signal). Aborting throws ExtractionCancelledError. */
+  signal?: AbortSignal;
   sourceLabel: string;
 };
 

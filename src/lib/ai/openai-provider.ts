@@ -10,7 +10,10 @@ import type {
   ExtractionPin,
   ExtractionResult,
 } from "@/lib/ai";
-import { ExtractionTimeoutError } from "@/lib/ai/errors";
+import {
+  ExtractionCancelledError,
+  ExtractionTimeoutError,
+} from "@/lib/ai/errors";
 import {
   estimateExtractionCostUsd,
   EXTRACTION_REQUEST_TIMEOUT_MS,
@@ -165,7 +168,7 @@ function buildPrompt(input: ExtractionInput) {
     "- If evidence is weak or there are conflicting values, set status to needs_review.",
     "- Return pin numbers exactly as shown in the datasheet, preserving letters if present.",
     "- Choose the best matching package for the part number and package category, but set needsReview when confidence is weak.",
-    "- Evidence pages must be page numbers from the PDF.",
+    "- Evidence pages must be 1-based physical page indexes of the PDF file, not printed page labels.",
   ].join("\n");
 }
 
@@ -215,13 +218,22 @@ function buildProviderMeta(
 }
 
 async function runWithDeadline<T>(
-  deadlineSignal: AbortSignal,
+  signals: { caller?: AbortSignal; deadline: AbortSignal },
   operation: () => Promise<T>,
 ): Promise<T> {
+  if (signals.caller?.aborted) {
+    throw new ExtractionCancelledError();
+  }
+
   try {
     return await operation();
   } catch (error) {
-    if (deadlineSignal.aborted) {
+    // Check the caller first: a cancel that races the deadline is still a cancel.
+    if (signals.caller?.aborted) {
+      throw new ExtractionCancelledError();
+    }
+
+    if (signals.deadline.aborted) {
       throw new ExtractionTimeoutError(EXTRACTION_REQUEST_TIMEOUT_MS);
     }
 
@@ -233,8 +245,11 @@ export class OpenAIExtractionProvider implements AiProvider {
   async extractDatasheet(input: ExtractionInput): Promise<ExtractionResult> {
     const base64Pdf = Buffer.from(input.pdfBytes).toString("base64");
     const deadlineSignal = AbortSignal.timeout(EXTRACTION_REQUEST_TIMEOUT_MS);
+    const requestSignal = input.signal
+      ? AbortSignal.any([input.signal, deadlineSignal])
+      : deadlineSignal;
     const startedAt = performance.now();
-    const response = await runWithDeadline(deadlineSignal, () =>
+    const response = await runWithDeadline({ caller: input.signal, deadline: deadlineSignal }, () =>
       getOpenAIClient().responses.parse(
         {
           model: input.model,
@@ -268,7 +283,7 @@ export class OpenAIExtractionProvider implements AiProvider {
           },
         },
         {
-          signal: deadlineSignal,
+          signal: requestSignal,
           timeout: EXTRACTION_REQUEST_TIMEOUT_MS,
         },
       ),

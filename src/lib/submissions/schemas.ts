@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { REVIEWER_NOTES_MAX_LENGTH } from "@/lib/submissions/review";
 import type { SubmissionReviewPayload } from "@/lib/submissions/types";
 
 const reviewDecisionStatusSchema = z.enum(["pending", "confirmed", "corrected"]);
@@ -47,7 +48,12 @@ const packageSelectionReviewSchema = z
 const measurementReviewSchema = z
   .object({
     correctionNote: optionalTrimmedStringSchema,
-    correctedStatus: measurementFieldStatusSchema.optional(),
+    // Reviews saved before Sept 2026 can hold `correctedStatus: null`, because the
+    // MongoDB driver stored `undefined` as null. Treat null as "not set".
+    correctedStatus: z.preprocess(
+      (value) => (value === null ? undefined : value),
+      measurementFieldStatusSchema.optional(),
+    ),
     correctedValue: optionalTrimmedStringSchema,
     field: z.string().trim().min(1),
     status: reviewDecisionStatusSchema,
@@ -89,7 +95,7 @@ export const submissionReviewPayloadSchema = z.object({
   measurements: z.array(measurementReviewSchema),
   packageSelection: packageSelectionReviewSchema,
   pins: z.array(pinReviewSchema),
-  reviewerNotes: z.string().max(4000).transform((value) => value.trim()),
+  reviewerNotes: z.string().max(REVIEWER_NOTES_MAX_LENGTH).transform((value) => value.trim()),
 });
 
 export type SubmissionReviewPayloadInput = SubmissionReviewPayload;

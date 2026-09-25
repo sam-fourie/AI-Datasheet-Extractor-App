@@ -19,7 +19,11 @@ export async function getMongoClient() {
   }
 
   if (!globalThis.__mongoClientPromise) {
-    globalThis.__mongoClientPromise = new MongoClient(mongoUri).connect();
+    // ignoreUndefined: omit undefined fields instead of storing them as null,
+    // so optional review fields round-trip through the PATCH schema.
+    globalThis.__mongoClientPromise = new MongoClient(mongoUri, {
+      ignoreUndefined: true,
+    }).connect();
   }
 
   return globalThis.__mongoClientPromise;

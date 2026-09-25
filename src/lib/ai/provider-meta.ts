@@ -1,4 +1,5 @@
 import {
+  getOpenAIModelDefinition,
   isOpenAIReasoningEffort,
   REASONING_EFFORT_LABELS,
 } from "@/lib/ai/models";
@@ -32,10 +33,21 @@ export function formatTokenCount(value: number) {
   return new Intl.NumberFormat("en").format(Math.round(value));
 }
 
+/**
+ * Run cost: two decimals at or above $0.10 ("$0.22", "$6.98"), three from
+ * $0.01 ("$0.033"), four below ("$0.0042"). Thresholds are checked after
+ * rounding, so $0.0996 reads "$0.10" rather than "$0.100". Zero is "$0.00".
+ */
 export function formatUsd(value: number) {
-  const fractionDigits = value >= 1 ? 2 : value >= 0.01 ? 3 : 4;
+  if (value === 0) {
+    return "$0.00";
+  }
 
-  return `$${value.toFixed(fractionDigits)}`;
+  const magnitude = Math.abs(value);
+  const fractionDigits =
+    Number(magnitude.toFixed(3)) >= 0.1 ? 2 : Number(magnitude.toFixed(4)) >= 0.01 ? 3 : 4;
+
+  return `${value < 0 ? "-" : ""}$${magnitude.toFixed(fractionDigits)}`;
 }
 
 export function formatLatency(milliseconds: number) {
@@ -93,4 +105,39 @@ export function describeProviderRun(
     performance: performanceParts.length > 0 ? performanceParts.join(" · ") : null,
     tokens,
   };
+}
+
+const CODE_NAMED_LABEL_PATTERN = /^GPT-\d+(?:\.\d+)*\s+(\S.*)$/i;
+
+/**
+ * Short model name for dense UI: the code name when there is one
+ * ("gpt-5.6-terra" or "GPT-5.6 Terra" -> "Terra", "gpt-6-astra" -> "Astra"),
+ * otherwise the catalog label ("gpt-5.4" -> "GPT-5.4"). Unknown ids are
+ * returned as-is.
+ */
+export function formatModelShortLabel(modelId: string): string {
+  const definition = getOpenAIModelDefinition(modelId);
+  const label = definition?.label ?? modelId;
+  const codeName = label.match(CODE_NAMED_LABEL_PATTERN)?.[1];
+
+  return codeName ?? label;
+}
+
+/** Title-case effort label: "High", "Extra high"; unknown values as-is. */
+export function formatReasoningEffortLabel(effort: string) {
+  return isOpenAIReasoningEffort(effort) ? REASONING_EFFORT_LABELS[effort] : effort;
+}
+
+/** "Terra · High", or just "Terra" when the run has no stored effort. */
+export function formatRunLabel(
+  providerMeta: Pick<ProviderMeta, "model" | "reasoningEffort">,
+): string {
+  const model = formatModelShortLabel(providerMeta.model);
+  const effort =
+    typeof providerMeta.reasoningEffort === "string" &&
+    providerMeta.reasoningEffort.trim().length > 0
+      ? formatReasoningEffortLabel(providerMeta.reasoningEffort.trim())
+      : null;
+
+  return effort ? `${model} · ${effort}` : model;
 }

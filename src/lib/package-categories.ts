@@ -602,3 +602,139 @@ export const packageCategoryEntries = Object.entries(
 export const packageCategories = packageCategoryEntries.map(
   ([packageCategory]) => packageCategory,
 );
+
+export type PackageCategoryGroup = {
+  categories: readonly PackageCategory[];
+  id: string;
+  label: string;
+};
+
+/** Combobox groups for the intake category field. Every category appears exactly once. */
+export const PACKAGE_CATEGORY_GROUPS: readonly PackageCategoryGroup[] = [
+  {
+    categories: [
+      "BGA",
+      "Ceramic Dual-In-Line Packages",
+      "Dual-In-Line Packages",
+      "Plastic Leaded Chip Carrier",
+      "Quad Flat No-Lead",
+      "Quad Flat Packages",
+      "Small Outline No-lead",
+      "Small Outline Packages",
+    ],
+    id: "ic",
+    label: "IC packages",
+  },
+  {
+    categories: [
+      "SO Transistor Flat Lead",
+      "SOT223 (3-Pin)",
+      "SOT223 (4-Pin)",
+      "SOT223 (5-Pin)",
+      "SOT23 (3-Pin)",
+      "SOT23 (5-Pin)",
+      "SOT23 (6-Pin)",
+      "SOT23 (8-Pin)",
+      "Transistor Outline, Vertical",
+    ],
+    id: "transistor",
+    label: "Transistor packages",
+  },
+  {
+    categories: [
+      "Diodes Chip",
+      "Diodes Chip Non-polarised",
+      "Diodes Moulded",
+      "Diodes Moulded Non Polarised",
+      "Diodes, Axial Diameter Horizontal Mounting",
+      "Small Outline Diode",
+      "Small Outline Diode Flat Lead",
+      "LED Moulded",
+      "LEDs Chip",
+    ],
+    id: "diode-led",
+    label: "Diodes & LEDs",
+  },
+  {
+    categories: [
+      "Capacitor Al Electrolytic",
+      "Capacitor Chip Non-polarised",
+      "Capacitor Chip Polarised",
+      "Capacitor Moulded Non Polarised",
+      "Capacitor Moulded Polarised",
+      "Capacitor, Polarized Radial Diameter",
+      "Capacitors, Polarized Axial Diameter Horizontal Mounting",
+    ],
+    id: "capacitor",
+    label: "Capacitors",
+  },
+  {
+    categories: [
+      "Resistor Chip",
+      "Resistor Moulded",
+      "Resistors, Axial Diameter Horizontal Mounting",
+      "Thermistors Chip",
+      "Varistors Chip",
+      "Fuses Chip",
+      "Fuses Moulded",
+    ],
+    id: "resistor-protection",
+    label: "Resistors & protection",
+  },
+  {
+    categories: [
+      "Inductor Moulded",
+      "Inductors Chip",
+      "Inductors Precision Moulded",
+      "Inductors, Axial Diameter Horizontal Mounting",
+      "Ferrite Bead Chip",
+    ],
+    id: "inductor-ferrite",
+    label: "Inductors & ferrites",
+  },
+  {
+    categories: [
+      "Header, Receptacle - Right Angle PTH Box",
+      "Header, Receptacle - Straight PTH Box",
+      "Header, Shrouded",
+      "Header, Shrouded - Right Angle PTH Box",
+      "Header, Shrouded - Straight PTH Box",
+      "Header, Unshrouded - Right Angle PTH Pin",
+      "Header, Unshrouded - Single Row Staggered SMD Pin",
+      "Header, Unshrouded - Straight SMD Pin",
+      "Header, Vertical",
+      "Dual-In-Line Sockets",
+    ],
+    id: "connector-socket",
+    label: "Connectors & sockets",
+  },
+  {
+    categories: ["Antennas Chip"],
+    id: "other",
+    label: "Other",
+  },
+];
+
+/**
+ * Common package abbreviations per category, so the category search finds
+ * "Quad Flat No-Lead" from "qfn". Match case-insensitively.
+ */
+export const PACKAGE_CATEGORY_KEYWORDS: Partial<Record<PackageCategory, readonly string[]>> = {
+  BGA: ["BGA", "FBGA", "LFBGA", "WLCSP"],
+  "Ceramic Dual-In-Line Packages": ["CDIP", "CERDIP"],
+  "Dual-In-Line Packages": ["DIP", "PDIP"],
+  "Plastic Leaded Chip Carrier": ["PLCC"],
+  "Quad Flat No-Lead": ["QFN", "VQFN", "WQFN", "UQFN"],
+  "Quad Flat Packages": ["QFP", "LQFP", "TQFP"],
+  "SOT223 (3-Pin)": ["SOT", "SOT-223"],
+  "SOT223 (4-Pin)": ["SOT", "SOT-223"],
+  "SOT223 (5-Pin)": ["SOT", "SOT-223"],
+  "SOT23 (3-Pin)": ["SOT", "SOT-23"],
+  "SOT23 (5-Pin)": ["SOT", "SOT-23"],
+  "SOT23 (6-Pin)": ["SOT", "SOT-23"],
+  "SOT23 (8-Pin)": ["SOT", "SOT-23"],
+  "Small Outline Diode": ["SOD"],
+  "Small Outline No-lead": ["SON", "DFN", "VSON", "WSON"],
+  "Small Outline Packages": ["SOIC", "SO", "SOP", "SSOP", "TSSOP", "MSOP"],
+  "Transistor Outline, Vertical": ["TO-92", "TO92"],
+};

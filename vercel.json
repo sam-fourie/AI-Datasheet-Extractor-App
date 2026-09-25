@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "src/app/api/extractions/route.ts": {
+      "supportsCancellation": true
+    },
+    "src/app/api/pdf-url-validation/route.ts": {
+      "supportsCancellation": true
+    },
+    "src/app/api/submissions/[submissionId]/pdf/route.ts": {
+      "supportsCancellation": true
+    },
+    "src/app/api/submissions/[submissionId]/pdf/viewer/route.ts": {
+      "supportsCancellation": true
+    }
+  }
+}
