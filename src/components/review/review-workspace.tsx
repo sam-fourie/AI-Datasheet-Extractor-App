@@ -67,6 +67,7 @@ import {
 import {
   computeVisibleRows,
   createAttentionContextResolver,
+  type FilteredSection,
   type ReviewFilter,
 } from "@/lib/submissions/review-filters";
 import { describeSubmissionSource, getSubmissionPdfHref } from "@/lib/submissions/source";
@@ -165,6 +166,14 @@ export type ReviewWorkspaceProps = {
 };
 
 const EMPTY_KEYS: ReadonlySet<string> = new Set();
+
+/** The row kind each section lists, for "Show all" focusing its first row. */
+const SECTION_ROW_KIND = {
+  measurements: "measurement",
+  package: "package",
+  pins: "pin",
+} as const satisfies Record<FilteredSection, ReviewRowRef["kind"]>;
+
 const SAVE_BLOCKED_TOAST_ID = "review-save-blocked";
 const BULK_UNDO_TOAST_ID = "review-bulk-undo";
 const COMPLETION_CARD_ID = "review-completion";
@@ -283,11 +292,12 @@ export function ReviewWorkspace({
   );
   const pinOrder = useMemo(() => getPinDisplayOrder(extraction.pinRows), [extraction.pinRows]);
 
-  const [filter, setFilterState] = useState<ReviewFilter>(() =>
-    agreementByKey && Array.from(agreementByKey.values()).some((row) => row.outcome !== "match")
-      ? "differs"
-      : "all",
-  );
+  // Every page, re-runs included, opens on All. Opening re-runs on "Differs"
+  // hid every matching row, so a run that agreed with its baseline looked as
+  // if it had no measurements or pins. Differing rows still show the baseline
+  // value inline with a "Differs from baseline" marker, and the filter menu
+  // offers Differs.
+  const [filter, setFilterState] = useState<ReviewFilter>("all");
   const [stickyKeys, setStickyKeys] = useState<ReadonlySet<string>>(EMPTY_KEYS);
   const [pinQuery, setPinQueryState] = useState("");
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -376,8 +386,8 @@ export function ReviewWorkspace({
     [contextFor, draft, extraction, filter, pinOrder, pinQuery, stickyKeys],
   );
   const visibility = useMemo(
-    () => ({ stickyKeys, visibleKeys: visible.keys }),
-    [stickyKeys, visible.keys],
+    () => ({ filter, stickyKeys, visibleKeys: visible.keys }),
+    [filter, stickyKeys, visible.keys],
   );
 
   const activeRef = activeKey ? (refByKey.get(activeKey) ?? null) : null;
@@ -437,9 +447,9 @@ export function ReviewWorkspace({
   });
   const [pdfPage, setPdfPage] = useState<number | null>(() => pdfContext.pages[0] ?? null);
 
-  // A #row-… deep link: activate that row (showing every row if the default
-  // filter hides it) and open the datasheet at its page. Adjusted during
-  // render, not in an effect.
+  // A #row-… deep link: activate that row (showing every row if a filter
+  // hides it) and open the datasheet at its page. Adjusted during render, not
+  // in an effect.
   if (hashKey && !hashApplied) {
     const hashRef = refByKey.get(hashKey);
     const pages = hashRef ? getRowEvidencePages(extraction, hashRef) : [];
@@ -524,6 +534,22 @@ export function ReviewWorkspace({
   function setFilter(next: ReviewFilter) {
     setFilterState(next);
     setStickyKeys(EMPTY_KEYS);
+  }
+
+  /**
+   * "Show all" in a section the filter emptied: back to All, then focus that
+   * section's first row, because the button is gone once the rows are back.
+   */
+  function showAllRows(section: FilteredSection) {
+    const kind = SECTION_ROW_KIND[section];
+    const first = computeVisibleRows({ extraction, filter: "all", pinOrder, pinQuery, review: draft })
+      .order.find((ref) => ref.kind === kind);
+
+    setFilter("all");
+
+    if (first) {
+      window.requestAnimationFrame(() => activate(first, { focus: true }));
+    }
   }
 
   function setPinQuery(next: string) {
@@ -798,6 +824,7 @@ export function ReviewWorkspace({
       closeEditor();
       window.requestAnimationFrame(() => focusRow(ref));
     },
+    onShowAll: showAllRows,
     onShowPage: (page, ref) =>
       openPdf(page, ref ? rowContext(ref, page) : { index: 0, key: null, label: null, pages: [page] }),
   };
@@ -821,6 +848,7 @@ export function ReviewWorkspace({
     onDecide: (ref, status) => callbacksRef.current.onDecide(ref, status),
     onOpenCorrection: (ref) => callbacksRef.current.onOpenCorrection(ref),
     onRemoveCorrection: (ref) => callbacksRef.current.onRemoveCorrection(ref),
+    onShowAll: (section) => callbacksRef.current.onShowAll(section),
     onShowPage: (page, ref) => callbacksRef.current.onShowPage(page, ref),
   }));
 

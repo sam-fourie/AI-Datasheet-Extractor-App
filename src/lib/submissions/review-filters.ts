@@ -50,6 +50,54 @@ export function createAttentionContextResolver(input: {
   });
 }
 
+export type FilteredSection = "package" | "measurements" | "pins";
+
+const FILTERED_OUT_COPY: Record<Exclude<ReviewFilter, "all">, Record<FilteredSection, string>> = {
+  attention: {
+    measurements: "No measurements need attention.",
+    package: "The package doesn't need attention.",
+    pins: "No pins need attention.",
+  },
+  differs: {
+    measurements: "No measurements differ from the baseline.",
+    package: "The package doesn't differ from the baseline.",
+    pins: "No pins differ from the baseline.",
+  },
+  incorrect: {
+    measurements: "No measurements are marked incorrect.",
+    package: "The package isn't marked incorrect.",
+    pins: "No pins are marked incorrect.",
+  },
+  pending: {
+    measurements: "Every measurement is decided.",
+    package: "The package is decided.",
+    pins: "Every pin is decided.",
+  },
+  runsDisagree: {
+    measurements: "Most runs agree on every measurement.",
+    package: "Most runs agree on the package.",
+    pins: "Most runs agree on every pin.",
+  },
+};
+
+/**
+ * Copy for a section whose rows the active filter hides entirely. It says what
+ * the filter found ("No pins differ from the baseline") so an emptied section
+ * never reads as missing data.
+ */
+export function describeFilteredOutSection(
+  filter: ReviewFilter,
+  section: FilteredSection,
+): string {
+  if (filter === "all") {
+    return section === "package"
+      ? "The package doesn't match this filter."
+      : `No ${section} match this filter.`;
+  }
+
+  return FILTERED_OUT_COPY[filter][section];
+}
+
 /** Whether a row passes a filter. Attention comes from classifyRowAttention. */
 export function matchesReviewFilter(
   filter: ReviewFilter,

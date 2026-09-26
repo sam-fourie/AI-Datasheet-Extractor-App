@@ -13,7 +13,7 @@
  */
 
 import type { CorrectionInput, ReviewMode, ReviewRowRef } from "@/lib/submissions/review";
-import type { ReviewFilter } from "@/lib/submissions/review-filters";
+import type { FilteredSection, ReviewFilter } from "@/lib/submissions/review-filters";
 import type {
   BaselineRunHints,
   ExtractionSnapshot,
@@ -78,6 +78,12 @@ export type ReviewRowCallbacks = {
   onShowPage: (page: number, ref?: ReviewRowRef) => void;
   /** A bulk button was pressed. `refs` are exactly the eligible visible rows. */
   onBulkConfirm: (refs: ReviewRowRef[], scope: BulkConfirmScope) => void;
+  /**
+   * "Show all" in a section the filter emptied. The workspace resets the
+   * filter to All and focuses that section's first row, because the button
+   * is gone once the rows are back.
+   */
+  onShowAll: (section: FilteredSection) => void;
 };
 
 /* ------------------------------ Row state ---------------------------------- */
@@ -90,6 +96,8 @@ export type ReviewRowCallbacks = {
  * `visibleKeys`: a Set keeps its identity across renders, a closure does not.
  */
 export type RowVisibility = {
+  /** The active filter, for the note shown when it hides a whole section. */
+  filter?: ReviewFilter;
   isVisible?: (rowKey: string) => boolean;
   stickyKeys?: ReadonlySet<string>;
   visibleKeys?: ReadonlySet<string>;

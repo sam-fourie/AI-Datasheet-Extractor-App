@@ -11,8 +11,11 @@ import {
 import {
   computeVisibleRows,
   createAttentionContextResolver,
+  describeFilteredOutSection,
   matchesReviewFilter,
   pinMatchesQuery,
+  type FilteredSection,
+  type ReviewFilter,
 } from "@/lib/submissions/review-filters";
 import type {
   BaselineRunHints,
@@ -248,5 +251,44 @@ describe("computeVisibleRows", () => {
     expect(
       computeVisibleRows({ contextFor, extraction, filter: "differs", pinQuery: "trig", review }).order,
     ).toEqual([bodyLength]);
+  });
+});
+
+describe("describeFilteredOutSection", () => {
+  const filters: ReviewFilter[] = ["all", "pending", "attention", "incorrect", "differs", "runsDisagree"];
+  const sections: FilteredSection[] = ["package", "measurements", "pins"];
+
+  it("says the section agrees with its baseline rather than that it is empty", () => {
+    expect(describeFilteredOutSection("differs", "measurements")).toBe(
+      "No measurements differ from the baseline.",
+    );
+    expect(describeFilteredOutSection("differs", "pins")).toBe("No pins differ from the baseline.");
+    expect(describeFilteredOutSection("differs", "package")).toBe(
+      "The package doesn't differ from the baseline.",
+    );
+  });
+
+  it("names what each filter looked for", () => {
+    expect(describeFilteredOutSection("pending", "pins")).toBe("Every pin is decided.");
+    expect(describeFilteredOutSection("attention", "measurements")).toBe(
+      "No measurements need attention.",
+    );
+    expect(describeFilteredOutSection("incorrect", "pins")).toBe("No pins are marked incorrect.");
+    expect(describeFilteredOutSection("runsDisagree", "measurements")).toBe(
+      "Most runs agree on every measurement.",
+    );
+  });
+
+  it("falls back to the generic line for All", () => {
+    expect(describeFilteredOutSection("all", "pins")).toBe("No pins match this filter.");
+    expect(describeFilteredOutSection("all", "package")).toBe("The package doesn't match this filter.");
+  });
+
+  it("has a sentence for every filter and section", () => {
+    for (const filter of filters) {
+      for (const section of sections) {
+        expect(describeFilteredOutSection(filter, section)).toMatch(/^[A-Z].*\.$/);
+      }
+    }
   });
 });

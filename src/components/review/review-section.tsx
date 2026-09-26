@@ -4,6 +4,11 @@ import type { ReactNode } from "react";
 
 import { Button, Tooltip, cn } from "@/components/ui";
 import type { BulkConfirmPlan, ReviewRowRef } from "@/lib/submissions/review";
+import {
+  describeFilteredOutSection,
+  type FilteredSection,
+  type ReviewFilter,
+} from "@/lib/submissions/review-filters";
 
 export type ReviewSectionProps = {
   /** Right-aligned header controls (bulk button, search). */
@@ -114,4 +119,29 @@ export function formatDecidedCount(counts: { pending: number; total: number }) {
 /** Muted line shown when the filter or search hides every row of a section. */
 export function FilteredOutNote({ children }: { children: ReactNode }) {
   return <p className="px-4 py-3 text-callout text-text-muted">{children}</p>;
+}
+
+/**
+ * The note for a section the active filter empties: what the filter found,
+ * plus "Show all" to go back to every row.
+ */
+export function FilteredOutSectionNote({
+  filter = "all",
+  onShowAll,
+  section,
+}: {
+  filter?: ReviewFilter;
+  onShowAll?: (section: FilteredSection) => void;
+  section: FilteredSection;
+}) {
+  return (
+    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-3 text-callout text-text-muted">
+      <span>{describeFilteredOutSection(filter, section)}</span>
+      {filter !== "all" && onShowAll ? (
+        <Button onClick={() => onShowAll(section)} size="sm" variant="plain">
+          Show all
+        </Button>
+      ) : null}
+    </p>
+  );
 }

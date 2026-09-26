@@ -30,7 +30,13 @@ import { DecisionGlyph } from "./decision-glyph";
 import { EvidenceChips } from "./evidence-chips";
 import { PinGroupHeader } from "./pin-group-header";
 import { ReviewRow } from "./review-row";
-import { BulkConfirmButton, FilteredOutNote, formatDecidedCount, ReviewSection } from "./review-section";
+import {
+  BulkConfirmButton,
+  FilteredOutNote,
+  FilteredOutSectionNote,
+  formatDecidedCount,
+  ReviewSection,
+} from "./review-section";
 import {
   isRowVisible,
   PIN_SEARCH_INPUT_ID,
@@ -324,9 +330,6 @@ export function PinReviewList({
 
   const visibleFlat = extraction.pinRows.map((_, pinIndex) => pinIndex).filter((index) => isShown(index).shown);
   const query = search?.value.trim() ?? "";
-  const emptyMessage = query
-    ? `No pins match “${query}”.`
-    : "No pins match this filter.";
 
   const flatPlan =
     interactive && groups === null
@@ -366,7 +369,15 @@ export function PinReviewList({
   if (extraction.pinRows.length === 0) {
     body = <FilteredOutNote>No pins were extracted.</FilteredOutNote>;
   } else if (visibleFlat.length === 0) {
-    body = <FilteredOutNote>{emptyMessage}</FilteredOutNote>;
+    body = query ? (
+      <FilteredOutNote>No pins match “{query}”.</FilteredOutNote>
+    ) : (
+      <FilteredOutSectionNote
+        filter={visibility?.filter}
+        onShowAll={callbacks.onShowAll}
+        section="pins"
+      />
+    );
   } else if (groups === null) {
     body = visibleFlat.map((pinIndex, index) =>
       renderRow(pinIndex, {

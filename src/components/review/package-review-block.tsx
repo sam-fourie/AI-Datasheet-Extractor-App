@@ -17,7 +17,7 @@ import { CorrectionEditor } from "./correction-editor";
 import { DecisionGlyph } from "./decision-glyph";
 import { EvidenceChips } from "./evidence-chips";
 import { ReviewRow } from "./review-row";
-import { FilteredOutNote, formatDecidedCount, ReviewSection } from "./review-section";
+import { FilteredOutSectionNote, formatDecidedCount, ReviewSection } from "./review-section";
 import { isRowVisible, REVIEW_SECTION_IDS, type ReviewListProps } from "./types";
 
 export type PackageReviewBlockProps = ReviewListProps & {
@@ -159,7 +159,11 @@ export function PackageReviewBlock({
         </Card>
       ) : (
         <Card padding="none">
-          <FilteredOutNote>The package doesn&apos;t match this filter.</FilteredOutNote>
+          <FilteredOutSectionNote
+            filter={visibility?.filter}
+            onShowAll={callbacks.onShowAll}
+            section="package"
+          />
         </Card>
       )}
     </ReviewSection>

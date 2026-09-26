@@ -20,7 +20,13 @@ import { CorrectionEditor } from "./correction-editor";
 import { DecisionGlyph } from "./decision-glyph";
 import { EvidenceChips } from "./evidence-chips";
 import { ReviewRow } from "./review-row";
-import { BulkConfirmButton, FilteredOutNote, formatDecidedCount, ReviewSection } from "./review-section";
+import {
+  BulkConfirmButton,
+  FilteredOutNote,
+  FilteredOutSectionNote,
+  formatDecidedCount,
+  ReviewSection,
+} from "./review-section";
 import { isRowVisible, REVIEW_SECTION_IDS, type ReviewListProps } from "./types";
 
 export type MeasurementReviewListProps = ReviewListProps & {
@@ -153,7 +159,11 @@ export function MeasurementReviewList({
         {resolved.length === 0 ? (
           <FilteredOutNote>No measurements were requested for this package.</FilteredOutNote>
         ) : rows.length === 0 ? (
-          <FilteredOutNote>No measurements match this filter.</FilteredOutNote>
+          <FilteredOutSectionNote
+            filter={visibility?.filter}
+            onShowAll={callbacks.onShowAll}
+            section="measurements"
+          />
         ) : (
           rows.map(({ key, matches, ref, row, sticky }, index) => {
             const reasons = classifyRowAttention(extraction, ref, contextFor(ref));
