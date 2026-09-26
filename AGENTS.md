@@ -151,8 +151,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Route Map
 
-- `/` is New extraction (intake only). On success it hands off to the review page through the session-storage arrival key.
+- `/` is New extraction (intake only), in the `src/app/(intake)/` route group together with its loading skeleton. On success it hands off to the review page through the session-storage arrival key.
 - `/submissions` is the Submissions list: baseline submissions with their model runs nested, plus search, category, status and sort. The list page lives in the `src/app/submissions/(list)/` route group so its loading state never wraps the review route.
-- `/submissions/[submissionId]` is the review workspace for baselines and re-runs.
+- `/submissions/[submissionId]` is the review workspace for baselines and re-runs. Unknown or malformed ids answer with an HTTP 404: `layout.tsx` in that segment runs the lean `submissionExists` check and calls `notFound()` before the segment's `loading.tsx` starts streaming, and `src/app/submissions/not-found.tsx` renders the page and its title.
+- HTTP status rule: once any `loading.tsx` or Suspense fallback above a component streams, the status is locked at 200 and `notFound()` can only render UI. Never add a `loading.tsx` at the app root (it would wrap every route); scope skeletons with route groups, and put existence checks that must return 404 in a layout above the route's `loading.tsx`.
 - `/reports` holds all statistics: accuracy, agreement, model leaderboard, cost and latency, field correction rates, and the definitions of each number.
 - `/preview` is the internal living style guide and `/preview/review` holds review fixtures. Neither is linked from navigation.

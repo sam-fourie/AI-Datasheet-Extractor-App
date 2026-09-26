@@ -231,6 +231,27 @@ export async function listSubmissionSummaries() {
   );
 }
 
+/**
+ * Lean existence check: a covered lookup on the _id index. The review route's
+ * layout calls it before anything streams, so an unknown id can still answer
+ * with an HTTP 404 (see src/app/submissions/[submissionId]/layout.tsx).
+ */
+export async function submissionExists(submissionId: string): Promise<boolean> {
+  const objectId = toObjectId(submissionId);
+
+  if (!objectId) {
+    return false;
+  }
+
+  const collection = await getSubmissionCollection();
+  const document = await collection.findOne(
+    { _id: objectId },
+    { projection: { _id: 1 } },
+  );
+
+  return document !== null;
+}
+
 export async function getSubmissionDetail(
   submissionId: string,
 ): Promise<SubmissionDetail | null> {

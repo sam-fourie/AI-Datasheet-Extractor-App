@@ -17,7 +17,8 @@ import { listDatasheetIndex, listRunMetaSummaries } from "@/lib/submissions/repo
 import type { DatasheetIndexEntry } from "@/lib/submissions/types";
 
 export const metadata: Metadata = {
-  // The root layout's title template does not apply to a page in its own segment.
+  // Spelled out in full so the tab title never depends on where the root
+  // layout's title template applies.
   title: { absolute: "New extraction · AI Datasheet Extractor" },
 };
 

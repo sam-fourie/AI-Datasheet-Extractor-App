@@ -147,6 +147,7 @@ export {
   listRunMetaSummaries,
   listSubmissionModelRuns,
   listSubmissionSummaries,
+  submissionExists,
   updateSubmissionReview,
   createSubmission,
 } from "./repository";
