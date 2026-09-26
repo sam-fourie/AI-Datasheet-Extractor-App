@@ -11,7 +11,7 @@ const ROW_COUNT = 8;
 
 export default function SubmissionsLoading() {
   return (
-    <div className={appPageContainerClassName("default")}>
+    <div className={appPageContainerClassName("full")}>
       <p className="sr-only" role="status">
         Loading submissions…
       </p>

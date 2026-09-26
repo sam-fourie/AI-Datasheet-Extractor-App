@@ -4,7 +4,11 @@ import { Card, Skeleton, SkeletonText } from "@/components/ui";
 /** Header, filter bar, the five stats and two chart cards (spec §4.4). */
 export default function ReportsLoading() {
   return (
-    <AppPageLayout meta={<Skeleton className="h-4 w-72 max-w-full" />} title="Reports">
+    <AppPageLayout
+      meta={<Skeleton className="h-4 w-72 max-w-full" />}
+      title="Reports"
+      width="full"
+    >
       <div aria-busy="true" className="flex min-w-0 flex-col gap-10 lg:gap-12">
         <span className="sr-only" role="status">
           Loading reports

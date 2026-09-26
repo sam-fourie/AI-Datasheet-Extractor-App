@@ -21,7 +21,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   - Elevation: `shadow-xs`, `shadow-card`, `shadow-overlay`.
   - Radii: `rounded-xs` (6), `rounded-sm` (8), `rounded-md` (12), `rounded-lg` (16), `rounded-pill`.
   - Type scale: `text-title-1`, `text-title-2`, `text-title-3`, `text-body`, `text-callout`, `text-caption`, `text-stat`. Weights are 400, 500 and 600 only. Use `tabular-nums` on numeric cells.
-  - Layout: `--ui-sidebar-width`, `--ui-topbar-height`, `--ui-header-height`, `--ui-toolbar-height`, `--ui-content-narrow`, `--ui-content-default`, `--ui-content-review`.
+  - Layout: `--ui-rail-width` (collapsed desktop sidebar), `--ui-sidebar-width` (expanded), `--ui-topbar-height`, `--ui-header-height`, `--ui-toolbar-height`, `--ui-content-narrow`, `--ui-content-default`, `--ui-content-review`.
   - Motion: `ease-ui`, `ease-ui-emphasized`, `--ui-duration-fast`, `--ui-duration`, `--ui-duration-slow`, and the entrance animations `animate-fade-in`, `animate-dialog-in`, `animate-sheet-right-in`, `animate-sheet-bottom-in`, `animate-toast-in` and `animate-float-in`. Wrap animations in `motion-safe:`. A global reduced-motion block also turns them off.
 - Colour semantics:
   - Green: confirmed, match, or a good score.
@@ -52,6 +52,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - `src/components/delete-submission-dialog.tsx`: `DeleteSubmissionDialog`, the only delete flow. A baseline with runs always cascades. The action is disabled with `RUN_IN_PROGRESS_REASON` while a background run for that group is running.
 - `src/components/review-queue-badge.tsx`: the sidebar count of pending baselines.
 - Shell: `AppLink` (a guard-aware `next/link`), `AppPageLayout` and `AppStatusPage` (for the error and not-found pages), `AppSidebarNav` (desktop, 1024 px and up) and `AppMobileNav` (the top bar below 1024 px). All of these are in `src/components/`.
+- The desktop sidebar is a 56 px icon rail that keeps its grid column, so pages never reflow. The panel inside it widens to 240 px over the content on hover (after a short dwell) or when keyboard focus enters, then collapses. It is CSS only, keyed on the `group/sidebar` group in `src/app/layout.tsx`; shared reveal classes live in `src/components/app-sidebar-classes.ts`, a plain module because values exported from a `"use client"` module reach Server Components as client references. Keep item icons at the same x position in both states.
+- Page widths: New extraction uses `AppPageLayout width="narrow"`; Submissions and Reports use `width="full"` with the standard page padding; the review workspace manages its own layout.
 - The root layout mounts `NavigationGuardProvider`, then `ToastProvider`, then `BackgroundTasksProvider`.
 
 ## Navigation

@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 
-import { Badge, Tooltip } from "@/components/ui";
+import { SIDEBAR_REVEAL_CLASS_NAME } from "@/components/app-sidebar-classes";
+import { Badge, cn, Tooltip } from "@/components/ui";
 import { getReviewQueueCount } from "@/lib/submissions/repository";
 
 function pluralizeDatasheets(count: number) {
@@ -32,11 +33,19 @@ export async function ReviewQueueBadge() {
   const label = pluralizeDatasheets(count);
 
   return (
-    <Tooltip content={label} describeChild={false} side="right">
-      <Badge className="ml-auto" size="sm" tone="neutral">
-        <span aria-hidden="true">{count}</span>
-        <span className="sr-only">, {label}</span>
-      </Badge>
-    </Tooltip>
+    <>
+      {/* Collapsed rail: a dot on the Submissions icon. It fades out as the
+          panel expands and the numbered pill takes over. */}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute top-2 left-[26px] size-2 rounded-pill bg-accent ring-2 ring-surface-subtle transition-opacity duration-(--ui-duration-fast) ease-ui group-hover/sidebar:opacity-0 group-hover/sidebar:delay-150 group-has-[:focus-visible]/sidebar:opacity-0 group-has-[:focus-visible]/sidebar:delay-0"
+      />
+      <Tooltip content={label} describeChild={false} side="right">
+        <Badge className={cn("ml-auto", SIDEBAR_REVEAL_CLASS_NAME)} size="sm" tone="neutral">
+          <span aria-hidden="true">{count}</span>
+          <span className="sr-only">, {label}</span>
+        </Badge>
+      </Tooltip>
+    </>
   );
 }

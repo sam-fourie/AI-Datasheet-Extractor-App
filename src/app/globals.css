@@ -76,7 +76,8 @@
   --ui-radius-pill: 999px;
 
   /* Layout */
-  --ui-sidebar-width: 240px;
+  --ui-rail-width: 56px; /* desktop sidebar, collapsed to icons */
+  --ui-sidebar-width: 240px; /* desktop sidebar, expanded over the content */
   --ui-topbar-height: 52px;
   --ui-header-height: 56px;
   --ui-toolbar-height: 48px;

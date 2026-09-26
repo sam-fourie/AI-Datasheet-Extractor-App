@@ -6,6 +6,7 @@ import { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 
 import { AppLink } from "@/components/app-link";
+import { SIDEBAR_REVEAL_CLASS_NAME } from "@/components/app-sidebar-classes";
 import { cn } from "@/components/ui";
 
 export type PrimaryNavItem = {
@@ -71,7 +72,11 @@ export type AppSidebarNavProps = {
   submissionsBadge?: ReactNode;
 };
 
-/** Desktop primary navigation (spec §1.3). */
+/**
+ * Desktop primary navigation (spec §1.3), rendered inside the collapsible
+ * rail in the root layout. Each item is a 40 px square while collapsed, with
+ * its icon at the same position when expanded, so nothing jumps.
+ */
 export function AppSidebarNav({ submissionsBadge }: AppSidebarNavProps) {
   const pathname = usePathname();
 
@@ -86,7 +91,7 @@ export function AppSidebarNav({ submissionsBadge }: AppSidebarNavProps) {
               <AppLink
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "flex h-8 items-center gap-2 rounded-sm px-2.5 text-body font-medium transition-colors duration-(--ui-duration-fast) ease-ui pointer-coarse:h-11",
+                  "relative flex h-10 items-center gap-3 rounded-sm px-3 text-body font-medium transition-colors duration-(--ui-duration-fast) ease-ui pointer-coarse:h-11",
                   isActive
                     ? "bg-surface-selected text-text"
                     : "text-text-muted hover:bg-surface-hover hover:text-text",
@@ -94,7 +99,9 @@ export function AppSidebarNav({ submissionsBadge }: AppSidebarNavProps) {
                 href={item.href}
               >
                 <PrimaryNavIcon icon={item.icon} isActive={isActive} />
-                <span className="min-w-0 truncate">{item.label}</span>
+                <span className={cn("min-w-0 truncate", SIDEBAR_REVEAL_CLASS_NAME)}>
+                  {item.label}
+                </span>
                 {item.href === "/submissions" ? submissionsBadge : null}
               </AppLink>
             </li>

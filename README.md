@@ -70,7 +70,7 @@ Uploaded PDFs are kept in R2 under the submission, and URL sources are cached in
 
 - `src/app/`: routes. Loading skeletons are scoped with route groups (`(intake)/` for New extraction, `submissions/(list)/` for the list) so no skeleton wraps the review route, whose `layout.tsx` checks the submission exists and returns a real 404 for unknown ids. Route handlers are under `src/app/api/`.
 - `src/components/ui/`: shared primitives (buttons, form controls, dialog and sheet, menu, popover, tooltip, toasts, table, badges and more), exported from `index.ts`. `/preview` shows each one.
-- `src/components/*.tsx`: the app shell and shared app components: the sidebar and mobile nav, `AppLink`, the navigation guard provider, the background task provider, the delete dialog and the status, score and run badges.
+- `src/components/*.tsx`: the app shell and shared app components: the collapsible icon-rail sidebar and the mobile nav, `AppLink`, the navigation guard provider, the background task provider, the delete dialog and the status, score and run badges.
 - `src/components/intake/`: the New extraction form, upload and URL validation, progress, duplicate notice and recent extractions.
 - `src/components/submissions/`: the Submissions list, toolbar and row menus.
 - `src/components/review/`: the review workspace (see below).

@@ -72,6 +72,7 @@ export default async function ReportsPage({
           : "Model accuracy and agreement across reviewed datasheets"
       }
       title="Reports"
+      width="full"
     >
       <div className="flex min-w-0 flex-col gap-10 lg:gap-12">
         <div className="flex flex-col gap-4">

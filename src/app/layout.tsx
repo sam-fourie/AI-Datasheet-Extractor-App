@@ -3,11 +3,12 @@ import type { Metadata } from "next";
 
 import { AppLink } from "@/components/app-link";
 import { AppMobileNav, BrandGlyph } from "@/components/app-mobile-nav";
+import { SIDEBAR_REVEAL_CLASS_NAME } from "@/components/app-sidebar-classes";
 import { AppSidebarNav } from "@/components/app-sidebar-nav";
 import { BackgroundTasksProvider } from "@/components/background-tasks-provider";
 import { NavigationGuardProvider } from "@/components/navigation-blocker-provider";
 import { ReviewQueueBadge } from "@/components/review-queue-badge";
-import { ToastProvider } from "@/components/ui";
+import { cn, ToastProvider } from "@/components/ui";
 import { getOpenAIModelDefinition } from "@/lib/ai/models";
 import { formatReasoningEffortLabel } from "@/lib/ai/provider-meta";
 import { getDefaultExtractionSettings } from "@/lib/ai/settings";
@@ -49,29 +50,41 @@ export default function RootLayout({
                 Skip to content
               </a>
               <AppMobileNav />
-              <div className="lg:grid lg:min-h-dvh lg:grid-cols-[var(--ui-sidebar-width)_minmax(0,1fr)]">
-                <aside className="hidden border-r border-border bg-surface-subtle lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col lg:gap-4 lg:px-3 lg:pt-3 lg:pb-4">
-                  <AppLink
-                    className="flex h-11 shrink-0 items-center gap-2.5 rounded-sm px-2 text-text"
-                    href="/"
-                  >
-                    <BrandGlyph />
-                    <p className="truncate text-[15px] leading-5 font-semibold">
-                      AI Datasheet Extractor
-                    </p>
-                  </AppLink>
-                  <AppSidebarNav
-                    submissionsBadge={
-                      <Suspense fallback={null}>
-                        <ReviewQueueBadge />
-                      </Suspense>
-                    }
-                  />
-                  <div className="mt-auto space-y-0.5 px-2.5 text-caption text-text-muted">
-                    <p>Default model</p>
-                    <p>
-                      {formatDefaultModelLabel()}
-                    </p>
+              <div className="lg:grid lg:min-h-dvh lg:grid-cols-[var(--ui-rail-width)_minmax(0,1fr)]">
+                {/*
+                  Desktop sidebar: a thin icon rail that holds its grid column,
+                  so pages never reflow. On hover (after a short dwell) or when
+                  keyboard focus enters it, the panel widens over the content
+                  and shows the labels; it collapses when the pointer or focus
+                  leaves. CSS only, keyed on the group/sidebar group.
+                */}
+                <aside className="relative z-40 hidden lg:sticky lg:top-0 lg:block lg:h-dvh">
+                  <div className="group/sidebar absolute inset-y-0 left-0 flex w-(--ui-rail-width) flex-col gap-4 overflow-hidden border-r border-border bg-surface-subtle px-2 pt-3 pb-4 transition-[width,box-shadow] delay-75 duration-(--ui-duration) ease-ui hover:w-(--ui-sidebar-width) hover:shadow-overlay hover:delay-150 has-[:focus-visible]:w-(--ui-sidebar-width) has-[:focus-visible]:shadow-overlay has-[:focus-visible]:delay-0">
+                    <AppLink
+                      className="flex h-10 shrink-0 items-center gap-2.5 rounded-sm px-2 text-text"
+                      href="/"
+                    >
+                      <BrandGlyph />
+                      <p className={cn("truncate text-[15px] leading-5 font-semibold", SIDEBAR_REVEAL_CLASS_NAME)}>
+                        AI Datasheet Extractor
+                      </p>
+                    </AppLink>
+                    <AppSidebarNav
+                      submissionsBadge={
+                        <Suspense fallback={null}>
+                          <ReviewQueueBadge />
+                        </Suspense>
+                      }
+                    />
+                    <div
+                      className={cn(
+                        "mt-auto space-y-0.5 px-3 text-caption whitespace-nowrap text-text-muted",
+                        SIDEBAR_REVEAL_CLASS_NAME,
+                      )}
+                    >
+                      <p>Default model</p>
+                      <p>{formatDefaultModelLabel()}</p>
+                    </div>
                   </div>
                 </aside>
                 <main className="min-w-0 focus:outline-none" id="main" tabIndex={-1}>

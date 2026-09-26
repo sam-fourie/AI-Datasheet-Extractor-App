@@ -42,6 +42,7 @@ export default async function SubmissionsPage({ searchParams }: SubmissionsPageP
         )
       }
       bodyClassName="[&:has([data-list-pending])_[data-datasheet-list]]:opacity-60"
+      width="full"
       meta={isEmpty ? null : formatListMeta(totals)}
       title="Submissions"
     >
