@@ -286,7 +286,8 @@ export function DatasheetPane({
       className={cn("flex-col border-l border-border bg-surface-sunken", className)}
       data-review-pane=""
     >
-      <div className="flex h-10 shrink-0 items-center gap-1.5 border-b border-border bg-surface-subtle pr-1.5 pl-3">
+      {/* pr-4 matches the review header's lg:px-4, so the last icon lines up with the "···" menu above. */}
+      <div className="flex h-10 shrink-0 items-center gap-1.5 border-b border-border bg-surface-subtle pr-4 pl-3">
         <FileText aria-hidden="true" className="size-4 shrink-0 text-text-muted" />
         <p
           className="min-w-0 flex-1 truncate text-callout"

@@ -1503,33 +1503,14 @@ export function ReviewWorkspace({
               </Button>
             </Tooltip>
           </>
-        ) : (
-          // One cell holding an invisible copy of the read-mode button, so the
-          // slot keeps its width and the run switcher and menu never move
-          // between Edit review / Review this run and Done.
-          <span className="grid justify-items-end">
-            <Button
-              aria-hidden="true"
-              className="invisible col-start-1 row-start-1"
-              size="sm"
-              tabIndex={-1}
-              variant="secondary"
-            >
-              {editLabel}
-            </Button>
-            {canFinish ? (
-              <Button
-                className="col-start-1 row-start-1"
-                id="review-action-done"
-                onClick={finishEditing}
-                size="sm"
-                variant="ghost"
-              >
-                Done
-              </Button>
-            ) : null}
-          </span>
-        )}
+        ) : canFinish ? (
+          // No placeholder when there's nothing to show: an invisible copy of
+          // the read-mode button used to hold the slot open, which left an
+          // empty gap after the "···" menu while reviewing a baseline.
+          <Button id="review-action-done" onClick={finishEditing} size="sm" variant="ghost">
+            Done
+          </Button>
+        ) : null}
       </>
     );
 

@@ -22,7 +22,7 @@ import type { ReviewProgress } from "@/lib/submissions/types";
 import { DetailsPopover, type SubmissionDetailsProps } from "./details-popover";
 
 export type ReviewHeaderProps = {
-  /** The action cluster (md+): Edit review / Done / Discard + Save. */
+  /** The action cluster (md+): Edit review / Done / Discard + Save, or null when none applies. */
   actions: ReactNode;
   /** "/submissions?{last list query}" */
   backHref: string;
@@ -189,7 +189,8 @@ export function ReviewHeader({
             />
           </div>
 
-          <div className="flex items-center gap-2 max-md:hidden" data-review-actions="">
+          {/* Hidden while empty, so its gap doesn't push the "···" menu in from the edge. */}
+          <div className="flex items-center gap-2 empty:hidden max-md:hidden" data-review-actions="">
             {actions}
           </div>
         </div>
