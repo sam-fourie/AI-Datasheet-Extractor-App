@@ -20,6 +20,7 @@ import {
   type ExtractionErrorAction,
 } from "./extraction-error-callout";
 import { ExtractionProgress } from "./extraction-progress";
+import { RunningExtractions } from "./running-extractions";
 import {
   findModelEstimate,
   getFileValidationError,
@@ -318,6 +319,7 @@ export function NewExtractionForm({
       ) : null}
 
       <div className="space-y-6" hidden={isBusy}>
+        <RunningExtractions />
         {phase === "error" && state.error ? (
           <ExtractionErrorCallout
             canRetryAtMedium={canRetryAtMedium}

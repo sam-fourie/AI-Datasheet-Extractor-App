@@ -129,7 +129,7 @@ export function DuplicateNotice({
     if (taskId === null) {
       toast.show({
         description: "Wait for one to finish, then try again.",
-        title: "3 model runs are already in progress",
+        title: "3 extractions or model runs are already in progress",
         tone: "warning",
       });
       return;

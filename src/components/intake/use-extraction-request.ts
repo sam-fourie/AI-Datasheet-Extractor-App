@@ -2,10 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import {
-  useNavigationGuard,
-  useNavigationGuardControls,
-} from "@/components/navigation-blocker-provider";
+import { useBackgroundTasks } from "@/components/background-tasks-provider";
+import { useNavigationGuardControls } from "@/components/navigation-blocker-provider";
 import { useToast } from "@/components/ui";
 import type {
   ExtractionErrorCode,
@@ -32,8 +30,11 @@ import {
  *                    \-> error | cancelled (the form is restored)
  *
  * The R2 PUT goes through XMLHttpRequest for byte progress; the extraction
- * POST uses fetch. One AbortController covers both. While uploading or
- * extracting a navigation-level guard asks before leaving, and Leave aborts.
+ * POST uses fetch. Both run as one background task (`useBackgroundTasks`), so
+ * leaving the page doesn't stop them: the task's signal only aborts on
+ * Cancel, or when the tab closes (the provider's unload guard warns first).
+ * While the page is open it shows progress and opens the review when done.
+ * After leaving, a toast links to the review, or says what went wrong.
  */
 
 export type ExtractionPhase =
@@ -69,8 +70,6 @@ const INITIAL_STATE: ExtractionRequestState = {
 };
 
 const CANCELLED_STATUS = 499;
-const CANCEL_DESCRIPTION =
-  "We'll stop the extraction. If it had already finished, it will still appear in Submissions.";
 
 const KNOWN_CODES: readonly ExtractionErrorCode[] = [
   "upload-failed",
@@ -237,38 +236,42 @@ async function requestUploadUrl(file: File, signal: AbortSignal) {
 
 type KeptUpload = { identity: string; payload: UploadedPdfPayload };
 
+function describeFailure(error: unknown): ExtractionFailure {
+  return error instanceof RequestFailure
+    ? error.failure
+    : { code: "unknown", message: error instanceof Error ? error.message : String(error) };
+}
+
 export function useExtractionRequest() {
   const [state, setState] = useState<ExtractionRequestState>(INITIAL_STATE);
   const toast = useToast();
   const { releaseAndReplace } = useNavigationGuardControls();
-  const controllerRef = useRef<AbortController | null>(null);
+  const { cancel: cancelTask, startTask } = useBackgroundTasks();
   const keptUploadRef = useRef<KeptUpload | null>(null);
   const runIdRef = useRef(0);
+  const mountedRef = useRef(true);
+  // The running extraction this page started, if any: its task id and part number.
+  const inFlightRef = useRef<{ label: string; taskId: string } | null>(null);
 
-  const isInFlight = state.phase === "uploading" || state.phase === "extracting";
-
-  const abortCurrent = useCallback(() => {
-    controllerRef.current?.abort();
-  }, []);
-
-  useNavigationGuard(
-    isInFlight
-      ? {
-          description: CANCEL_DESCRIPTION,
-          leaveLabel: "Cancel extraction",
-          level: "navigation",
-          onLeave: abortCurrent,
-          title: "Leave and cancel the extraction?",
-        }
-      : null,
-  );
-
-  // Leaving the page by any route (the guard's Leave, a hard unload) stops the request.
+  // Leaving the page keeps the extraction running in the background. Say so,
+  // so it doesn't look lost.
   useEffect(() => {
+    mountedRef.current = true;
+
     return () => {
-      controllerRef.current?.abort();
+      mountedRef.current = false;
+
+      const inFlight = inFlightRef.current;
+
+      if (inFlight) {
+        toast.show({
+          description: "We'll let you know when it's ready to review.",
+          id: `extraction-continues-${inFlight.taskId}`,
+          title: `Still extracting ${inFlight.label}`,
+        });
+      }
     };
-  }, []);
+  }, [toast]);
 
   const showCancelledToast = useCallback(() => {
     toast.show({
@@ -279,16 +282,11 @@ export function useExtractionRequest() {
   }, [toast]);
 
   const start = useCallback(
-    async (input: ExtractionRequestInput) => {
-      controllerRef.current?.abort();
-
-      const controller = new AbortController();
+    (input: ExtractionRequestInput) => {
       const runId = runIdRef.current + 1;
-      const signal = controller.signal;
-      const isCurrent = () => runIdRef.current === runId;
+      const isCurrent = () => mountedRef.current && runIdRef.current === runId;
 
       runIdRef.current = runId;
-      controllerRef.current = controller;
 
       const { source } = input;
       const fileIdentity = source.kind === "upload" ? getFileIdentity(source.file) : null;
@@ -312,9 +310,8 @@ export function useExtractionRequest() {
         uploadReused: Boolean(kept),
       });
 
-      let usedPayload: UploadedPdfPayload | null = kept?.payload ?? null;
-
-      try {
+      const run = async (signal: AbortSignal): Promise<SubmissionDetail> => {
+        let usedPayload: UploadedPdfPayload | null = kept?.payload ?? null;
         let body: ExtractionRequestPayload;
 
         if (source.kind === "upload") {
@@ -334,15 +331,13 @@ export function useExtractionRequest() {
               sizeBytes: source.file.size,
             };
 
-            if (!isCurrent()) {
-              return;
+            if (isCurrent()) {
+              setState((current) => ({
+                ...current,
+                extractStartedAt: Date.now(),
+                phase: "extracting",
+              }));
             }
-
-            setState((current) => ({
-              ...current,
-              extractStartedAt: Date.now(),
-              phase: "extracting",
-            }));
           }
 
           body = {
@@ -364,7 +359,6 @@ export function useExtractionRequest() {
           };
         }
 
-        const extractStartedAt = Date.now();
         let response: Response;
 
         try {
@@ -387,10 +381,6 @@ export function useExtractionRequest() {
         }
 
         const payload = await readJson<SubmissionDetail | ExtractionErrorResponse>(response);
-
-        if (!isCurrent()) {
-          return;
-        }
 
         if (response.status === CANCELLED_STATUS || (payload && "code" in payload && payload.code === "cancelled")) {
           throw new CancelledError();
@@ -416,51 +406,98 @@ export function useExtractionRequest() {
 
         keptUploadRef.current = null;
 
-        const submissionId = payload.submissionId;
+        return payload;
+      };
 
-        try {
-          window.sessionStorage.setItem(`${REVIEW_ARRIVAL_KEY_PREFIX}${submissionId}`, "1");
-        } catch {
-          // Storage can be unavailable (private mode); the review page then skips the banner.
-        }
+      const taskId = startTask<SubmissionDetail>({
+        groupId: `extraction-${runId}-${Date.now().toString(36)}`,
+        kind: "extraction",
+        label: input.partNumber,
+        onError: (error) => {
+          inFlightRef.current = null;
 
-        // Release while the guard is still registered, then drop it (addendum A, D).
-        releaseAndReplace(`/submissions/${submissionId}`);
+          const failure = describeFailure(error);
+
+          if (isCurrent()) {
+            setState((current) => ({ ...current, error: failure, phase: "error" }));
+            return null;
+          }
+
+          return {
+            action: { href: "/", label: "New extraction" },
+            description: failure.message,
+            durationMs: 10000,
+            title: `Couldn't extract ${input.partNumber}`,
+            tone: "danger",
+          };
+        },
+        onSuccess: (submission) => {
+          inFlightRef.current = null;
+
+          const href = `/submissions/${submission.submissionId}`;
+
+          try {
+            window.sessionStorage.setItem(`${REVIEW_ARRIVAL_KEY_PREFIX}${submission.submissionId}`, "1");
+          } catch {
+            // Storage can be unavailable (private mode); the review page then skips the banner.
+          }
+
+          if (isCurrent()) {
+            releaseAndReplace(href);
+            setState((current) => ({
+              ...current,
+              extractDurationMs:
+                current.extractStartedAt !== null ? Date.now() - current.extractStartedAt : null,
+              phase: "opening",
+            }));
+
+            return { href, toast: null };
+          }
+
+          return {
+            href,
+            toast: {
+              action: { href, label: "Open review" },
+              description: "The extraction finished while you were away.",
+              durationMs: 12000,
+              title: `${input.partNumber} is ready to review`,
+              tone: "success",
+            },
+          };
+        },
+        run,
+      });
+
+      if (taskId === null) {
         setState((current) => ({
           ...current,
-          extractDurationMs: Date.now() - (current.extractStartedAt ?? extractStartedAt),
-          phase: "opening",
+          error: {
+            code: "unknown",
+            message: "3 extractions or model runs are already in progress. Wait for one to finish, then try again.",
+          },
+          phase: "error",
         }));
-      } catch (error) {
-        if (!isCurrent()) {
-          return;
-        }
-
-        controllerRef.current = null;
-
-        if (isAbortError(error) || signal.aborted) {
-          setState((current) => ({ ...current, error: null, phase: "cancelled" }));
-          showCancelledToast();
-          return;
-        }
-
-        const failure: ExtractionFailure =
-          error instanceof RequestFailure
-            ? error.failure
-            : {
-                code: "unknown",
-                message: error instanceof Error ? error.message : String(error),
-              };
-
-        setState((current) => ({ ...current, error: failure, phase: "error" }));
+        return;
       }
+
+      inFlightRef.current = { label: input.partNumber, taskId };
     },
-    [releaseAndReplace, showCancelledToast],
+    [releaseAndReplace, startTask],
   );
 
   const cancel = useCallback(() => {
-    controllerRef.current?.abort();
-  }, []);
+    const inFlight = inFlightRef.current;
+
+    if (!inFlight) {
+      return;
+    }
+
+    inFlightRef.current = null;
+    runIdRef.current += 1;
+    cancelTask(inFlight.taskId);
+    setState((current) => ({ ...current, error: null, phase: "cancelled" }));
+    showCancelledToast();
+  }, [cancelTask, showCancelledToast]);
 
   const clearError = useCallback(() => {
     setState((current) =>

@@ -16,10 +16,11 @@ import { useNavigationGuard } from "@/components/navigation-blocker-provider";
 import { useToast, type ToastInput } from "@/components/ui";
 
 /**
- * App-wide tracker for work that outlives the page that started it, today
- * only model re-runs (spec §3.4, addendum E). It lives in the root layout, so
- * the fetch survives client navigations. While a task runs, an unload-level
- * guard warns before the tab closes; in-app navigation stays free.
+ * App-wide tracker for work that outlives the page that started it: new
+ * extractions and model re-runs (spec §3.4, addendum E). It lives in the root
+ * layout, so the fetch survives client navigations. While a task runs, an
+ * unload-level guard warns before the tab closes; in-app navigation stays
+ * free.
  */
 
 export const MAX_CONCURRENT_BACKGROUND_TASKS = 3;
@@ -27,7 +28,7 @@ export const MAX_CONCURRENT_BACKGROUND_TASKS = 3;
 /** Identical starts (same group and label) closer than this are treated as one. */
 const DUPLICATE_START_WINDOW_MS = 2000;
 
-export type BackgroundTaskKind = "rerun";
+export type BackgroundTaskKind = "extraction" | "rerun";
 
 export type BackgroundTaskStatus = "running" | "succeeded" | "failed";
 
@@ -47,8 +48,11 @@ export type BackgroundTask = {
 
 export type BackgroundTaskSuccess = {
   href?: string;
-  /** Replaces the default "{label} finished" toast. */
-  toast?: ToastInput;
+  /**
+   * Replaces the default "{label} finished" toast. Null shows no toast, for a
+   * page that is still open and takes the person to the result itself.
+   */
+  toast?: ToastInput | null;
 };
 
 export type BackgroundTaskContext = {
@@ -63,13 +67,20 @@ export type StartBackgroundTaskInput<T> = {
   groupId: string;
   kind: BackgroundTaskKind;
   label: string;
-  onError?: (error: unknown, context: BackgroundTaskContext) => ToastInput;
+  /** The failure toast. Null shows none, for a page that shows the error itself. */
+  onError?: (error: unknown, context: BackgroundTaskContext) => ToastInput | null;
   onSuccess?: (result: T) => BackgroundTaskSuccess;
   run: (signal: AbortSignal) => Promise<T>;
 };
 
 export type BackgroundTasksApi = {
-  /** Removes a finished task. Running tasks cannot be dismissed or cancelled. */
+  /**
+   * Stops a running task and removes it, with no toast. Only the page that
+   * started an extraction offers this (its Cancel button); re-runs have no
+   * Cancel.
+   */
+  cancel: (id: string) => void;
+  /** Removes a finished task. Running tasks cannot be dismissed. */
   dismiss: (id: string) => void;
   /** True while any task for `groupId` is running. */
   isGroupBusy: (groupId: string) => boolean;
@@ -85,15 +96,16 @@ export type BackgroundTasksApi = {
 };
 
 const unloadGuard = {
-  description: "A model run is still in progress. Leaving now may lose it.",
+  description: "An extraction or model run is still in progress. Leaving now may lose it.",
   leaveLabel: "Leave",
   level: "unload",
-  title: "A model run is still in progress",
+  title: "An extraction or model run is still in progress",
 } as const;
 
 const BackgroundTasksContext = createContext<BackgroundTasksApi | null>(null);
 
 const emptyApi: BackgroundTasksApi = {
+  cancel: () => {},
   dismiss: () => {},
   isGroupBusy: () => false,
   retry: () => null,
@@ -203,23 +215,30 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
 
           const success = input.onSuccess?.(result) ?? {};
           const href = success.href;
-          const toastInput: ToastInput = success.toast
-            ? {
-                ...success.toast,
-                action:
-                  success.toast.action ??
-                  (href ? { href, label: "Open run" } : undefined),
-              }
-            : {
-                action: href ? { href, label: "Open run" } : undefined,
-                durationMs: 8000,
-                title: `${input.label} finished`,
-                tone: "success",
-              };
+          const toastInput: ToastInput | null =
+            success.toast === null
+              ? null
+              : success.toast
+                ? {
+                    ...success.toast,
+                    action:
+                      success.toast.action ??
+                      (href ? { href, label: "Open run" } : undefined),
+                  }
+                : {
+                    action: href ? { href, label: "Open run" } : undefined,
+                    durationMs: 8000,
+                    title: `${input.label} finished`,
+                    tone: "success",
+                  };
 
           inputsRef.current.delete(id);
           updateTask(id, { resultHref: href, status: "succeeded" });
-          toast.show({ id: `background-task-${id}`, ...toastInput });
+
+          if (toastInput) {
+            toast.show({ id: `background-task-${id}`, ...toastInput });
+          }
+
           router.refresh();
         } catch (error) {
           if (controller.signal.aborted) {
@@ -227,15 +246,22 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
           }
 
           const message = describeError(error);
-          const toastInput: ToastInput = input.onError?.(error, { taskId: id }) ?? {
-            description: message,
-            durationMs: 8000,
-            title: `${input.label} run failed`,
-            tone: "danger",
-          };
+          const custom = input.onError?.(error, { taskId: id });
+          const toastInput: ToastInput | null =
+            custom === undefined
+              ? {
+                  description: message,
+                  durationMs: 8000,
+                  title: `${input.label} run failed`,
+                  tone: "danger",
+                }
+              : custom;
 
           updateTask(id, { error: message, status: "failed" });
-          toast.show({ id: `background-task-${id}`, ...toastInput });
+
+          if (toastInput) {
+            toast.show({ id: `background-task-${id}`, ...toastInput });
+          }
         } finally {
           runningRef.current.delete(id);
         }
@@ -251,6 +277,13 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    inputsRef.current.delete(id);
+    setTasks((current) => current.filter((task) => task.id !== id));
+  }, []);
+
+  const cancel = useCallback((id: string) => {
+    runningRef.current.get(id)?.controller.abort();
+    runningRef.current.delete(id);
     inputsRef.current.delete(id);
     setTasks((current) => current.filter((task) => task.id !== id));
   }, []);
@@ -282,8 +315,8 @@ export function BackgroundTasksProvider({ children }: { children: ReactNode }) {
   );
 
   const api = useMemo<BackgroundTasksApi>(
-    () => ({ dismiss, isGroupBusy, retry, startTask, tasks }),
-    [dismiss, isGroupBusy, retry, startTask, tasks],
+    () => ({ cancel, dismiss, isGroupBusy, retry, startTask, tasks }),
+    [cancel, dismiss, isGroupBusy, retry, startTask, tasks],
   );
 
   return (

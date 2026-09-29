@@ -44,7 +44,7 @@ Type-check with `npx tsc --noEmit -p tsconfig.json`.
 | Route | Page |
 | --- | --- |
 | `/unlock` | Sign-in: the PIN, then "Who is this?" on a new device. Every other page redirects here until both are done. |
-| `/` | New extraction: upload a PDF or paste a link, choose a package category and model, and extract. On success it opens the review page. |
+| `/` | New extraction: upload a PDF or paste a link, choose a package category and model, and extract. On success it opens the review page. You can leave while it runs: it keeps going in the background, and a toast links to the review when it's ready. |
 | `/submissions` | Submissions: one row per datasheet (baseline extraction) with its model runs nested, plus search, category, status (all, needs review, reviewed) and sort (recent activity, newest, part number, most pending). |
 | `/submissions/[submissionId]` | The review workspace for a baseline or a re-run. |
 | `/reports` | Statistics: overview, accuracy, model leaderboard, cost and latency, agreement by datasheet, the fields the AI gets wrong most, and how each number is defined. Filters for range, model, effort, category and datasheet. |
@@ -136,7 +136,7 @@ In read mode, C, X, Enter, U and Backspace only show the hint "Press E to edit t
 ## Model comparison (re-runs)
 
 - A datasheet can be re-run with another model and effort from the review page ("Run another model…") or from the duplicate notice on the New extraction page. `POST /api/submissions/[submissionId]/rerun` reuses the stored PDF and the original intake snapshot, then saves a new submission whose `comparison.baselineSubmissionId` points at the baseline.
-- Re-runs happen in the background: up to three at a time. They keep running while you move around the app, show a running chip and toasts, and can be retried if they fail. They cannot be cancelled. Closing the tab while one runs shows the browser's leave warning.
+- Re-runs happen in the background: up to three at a time, shared with new extractions. They keep running while you move around the app, show a running chip and toasts, and can be retried if they fail. They cannot be cancelled. Closing the tab while one runs shows the browser's leave warning.
 - `src/lib/submissions/agreement.ts` scores a re-run against the baseline. Once the baseline has confirmed or corrected decisions, only those rows count and the reviewed values are the reference. Before that, every row is compared against the baseline's raw AI output. Measurements match on the set of numbers they contain, and names on normalized identifiers.
 - Agreement is computed on read, so reviewing the baseline later updates every re-run's score. A coloured agreement score is shown only when the baseline is fully reviewed. Otherwise the app shows neutral text such as "vs unreviewed baseline" or "vs partly reviewed baseline (3 of 19)".
 - Agreement appears inline: in the re-run's review header and row markers, in the run switcher, and in the Model runs section on both baseline and re-run pages. Baseline rows show hints such as "2 of 4 runs differ".

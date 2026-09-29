@@ -236,7 +236,7 @@ export function ExtractionProgress({
         <p className="text-caption text-text-muted">
           {phase === "opening"
             ? "The extraction is saved."
-            : "Leaving this page cancels the extraction."}
+            : "You can leave this page. We'll let you know when it's ready."}
         </p>
       </div>
     </section>
