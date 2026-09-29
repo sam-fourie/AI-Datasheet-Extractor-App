@@ -21,6 +21,8 @@ export type PinEntryProps = {
   length: number;
   /** Where to go once unlocked, already checked with `safeNextPath`. */
   next: string;
+  /** The PIN was right but this device has no name yet: show "Who is this?". */
+  onNeedsName: () => void;
 };
 
 type Status = "idle" | "checking" | "rejected" | "success";
@@ -28,16 +30,19 @@ type Status = "idle" | "checking" | "rejected" | "success";
 const WRONG_PIN_MESSAGE = "Incorrect PIN. Try again.";
 /** How long a wrong PIN shakes and stays red before it clears (animate-shake). */
 const REJECT_MS = 450;
+/** How long the boxes stay green before the name step replaces them. */
+const ACCEPT_MS = 350;
 
 /**
  * The PIN boxes. One real input sits invisibly over the boxes, so typing,
  * paste, Backspace, the numeric keypad and screen readers all behave natively,
  * and the boxes only draw its value. The last digit checks the PIN right away.
- * A wrong PIN shakes and clears, and the right one does a full page load to
- * `next`, because the root layout rendered this screen without the app shell.
- * Without JavaScript the form still posts to the unlock route.
+ * A wrong PIN shakes and clears. The right one either hands over to the name
+ * step (`onNeedsName`) or does a full page load to `next`, because the root
+ * layout rendered this screen without the app shell. Without JavaScript the
+ * form still posts to the unlock route.
  */
-export function PinEntry({ action, failed = false, length, next }: PinEntryProps) {
+export function PinEntry({ action, failed = false, length, next, onNeedsName }: PinEntryProps) {
   const statusId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const clearTimerRef = useRef<number | null>(null);
@@ -104,11 +109,23 @@ export function PinEntry({ action, failed = false, length, next }: PinEntryProps
       return;
     }
 
-    const body = (await response.json().catch(() => null)) as { next?: unknown } | null;
+    const body = (await response.json().catch(() => null)) as {
+      needsName?: unknown;
+      next?: unknown;
+    } | null;
 
     if (response.ok && typeof body?.next === "string") {
       setStatus("success");
-      window.location.replace(body.next);
+
+      if (body.needsName === true) {
+        clearTimerRef.current = window.setTimeout(() => {
+          clearTimerRef.current = null;
+          onNeedsName();
+        }, ACCEPT_MS);
+      } else {
+        window.location.replace(body.next);
+      }
+
       return;
     }
 

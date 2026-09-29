@@ -26,6 +26,7 @@ import {
   listReviewRowRefs,
   normalizeSubmissionReview,
   planBulkConfirm,
+  resolveReviewCompletion,
   REVIEWER_NOTES_MAX_LENGTH,
   rowKeyOf,
   runHintDisagrees,
@@ -828,5 +829,54 @@ describe("reviewer notes limit", () => {
     expect(REVIEWER_NOTES_MAX_LENGTH).toBe(4000);
     expect(payload("a".repeat(REVIEWER_NOTES_MAX_LENGTH))).toBe(true);
     expect(payload("a".repeat(REVIEWER_NOTES_MAX_LENGTH + 1))).toBe(false);
+  });
+});
+
+describe("resolveReviewCompletion", () => {
+  const now = new Date("2026-09-29T12:00:00Z");
+  const earlier = new Date("2026-09-20T09:00:00Z");
+
+  it("stamps the first save that completes the review with its time and person", () => {
+    expect(
+      resolveReviewCompletion({
+        actor: "Sam",
+        nextStatus: "reviewed",
+        now,
+        previous: { reviewedAt: null, reviewedBy: null, status: "pending" },
+      }),
+    ).toEqual({ reviewedAt: now, reviewedBy: "Sam" });
+  });
+
+  it("keeps who completed it through later saves by someone else", () => {
+    expect(
+      resolveReviewCompletion({
+        actor: "Alex",
+        nextStatus: "reviewed",
+        now,
+        previous: { reviewedAt: earlier, reviewedBy: "Sam", status: "reviewed" },
+      }),
+    ).toEqual({ reviewedAt: earlier, reviewedBy: "Sam" });
+  });
+
+  it("clears both when a row goes back to pending", () => {
+    expect(
+      resolveReviewCompletion({
+        actor: "Alex",
+        nextStatus: "pending",
+        now,
+        previous: { reviewedAt: earlier, reviewedBy: "Sam", status: "reviewed" },
+      }),
+    ).toEqual({ reviewedAt: null, reviewedBy: null });
+  });
+
+  it("restamps a reviewed review that has no completion time", () => {
+    expect(
+      resolveReviewCompletion({
+        actor: "Alex",
+        nextStatus: "reviewed",
+        now,
+        previous: { reviewedAt: null, reviewedBy: null, status: "reviewed" },
+      }),
+    ).toEqual({ reviewedAt: now, reviewedBy: "Alex" });
   });
 });

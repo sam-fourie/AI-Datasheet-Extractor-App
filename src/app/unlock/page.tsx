@@ -1,12 +1,20 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { FileSearch } from "lucide-react";
 
-import { PinEntry } from "@/components/unlock/pin-entry";
-import { APP_PIN, safeNextPath, UNLOCK_API_PATH } from "@/lib/auth";
+import { UnlockFlow } from "@/components/unlock/unlock-flow";
+import {
+  APP_PIN,
+  IDENTITY_API_PATH,
+  isUnlockToken,
+  safeNextPath,
+  UNLOCK_API_PATH,
+  UNLOCK_COOKIE_NAME,
+} from "@/lib/auth";
 
 export const metadata: Metadata = {
   robots: { follow: false, index: false },
-  title: "Enter PIN",
+  title: "Sign in",
 };
 
 type UnlockPageProps = {
@@ -18,13 +26,16 @@ function firstValue(value: string | string[] | undefined) {
 }
 
 /**
- * The PIN screen. The root layout renders it without the app shell. Only the
- * PIN's length reaches the client: the boxes check it through /api/unlock.
+ * The sign-in screen: the PIN, then "Who is this?" when the device has no
+ * name. The proxy only lets visitors here until they have both, so an
+ * unlocked visitor starts at the name step. The root layout renders it
+ * without the app shell. Only the PIN's length reaches the client.
  */
 export default async function UnlockPage({ searchParams }: UnlockPageProps) {
   const params = await searchParams;
   const next = safeNextPath(firstValue(params.next));
   const failed = firstValue(params.error) === "1";
+  const unlocked = isUnlockToken((await cookies()).get(UNLOCK_COOKIE_NAME)?.value);
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center px-4 pt-16 pb-28">
@@ -34,10 +45,15 @@ export default async function UnlockPage({ searchParams }: UnlockPageProps) {
       >
         <FileSearch className="size-8" strokeWidth={2} />
       </span>
-      <h1 className="mt-6 text-title-1 text-text">Enter PIN</h1>
-      <p className="mt-1 text-body text-text-muted">AI Datasheet Extractor</p>
-      <div className="mt-10">
-        <PinEntry action={UNLOCK_API_PATH} failed={failed} length={APP_PIN.length} next={next} />
+      <div className="mt-6">
+        <UnlockFlow
+          failed={failed}
+          identityAction={IDENTITY_API_PATH}
+          initialStep={unlocked ? "name" : "pin"}
+          next={next}
+          pinAction={UNLOCK_API_PATH}
+          pinLength={APP_PIN.length}
+        />
       </div>
     </div>
   );

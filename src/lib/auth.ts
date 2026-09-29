@@ -1,5 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
+import { normalizeActorName } from "@/lib/identity";
+
 /**
  * The access gate: one shared PIN, hardcoded here on purpose (no environment
  * variable). Entering it on the PIN screen (/unlock) sets an HttpOnly unlock
@@ -9,7 +11,12 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
  * - `src/proxy.ts` checks the cookie on every page and API request: locked
  *   page visits go to the PIN screen and locked API calls get a 401.
  * - `requireAuthorizedRequest` in `src/app/api/_lib/access.ts` checks it again
- *   in every route handler except `/api/unlock`.
+ *   in every route handler except `/api/unlock`, `/api/identity` and
+ *   `/api/logout`.
+ *
+ * After the PIN, people say who they are ("Who is this?"). The name lives in
+ * the `dx_name` cookie and is recorded on the submissions and reviews they
+ * make (`readActorName`). Pages and API calls need both cookies.
  *
  * Server-only: this module uses `node:crypto`, so client components must not
  * import it.
@@ -21,8 +28,18 @@ export const UNLOCK_COOKIE_NAME = "dx_unlock";
 export const UNLOCK_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 export const UNLOCK_PAGE_PATH = "/unlock";
 export const UNLOCK_API_PATH = "/api/unlock";
+/** Saves the name from the "Who is this?" step. Needs the unlock cookie. */
+export const IDENTITY_API_PATH = "/api/identity";
+/** Clears both cookies and returns to the PIN screen. Always reachable. */
+export const LOGOUT_API_PATH = "/api/logout";
 /** The `error` of a locked API call's 401 body. */
 export const LOCKED_MESSAGE = "Enter the PIN to continue.";
+/** The `error` of a 401 for an unlocked request with no name yet. */
+export const UNNAMED_MESSAGE = "Enter your name to continue.";
+
+export const ACTOR_COOKIE_NAME = "dx_name";
+/** How long a device remembers the name: a year, or until Log out. */
+export const ACTOR_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 
 const UNLOCK_TOKEN_CONTEXT = "ai-datasheet-extractor:unlock:v1";
 const MAX_NEXT_PATH_LENGTH = 2048;
@@ -84,11 +101,16 @@ export function isRequestUnlocked(request: Request): boolean {
   return isUnlockToken(readCookie(request.headers.get("cookie"), UNLOCK_COOKIE_NAME));
 }
 
+/** The name of whoever sent the request (the `dx_name` cookie), or null. */
+export function readActorName(request: Request): string | null {
+  return normalizeActorName(readCookie(request.headers.get("cookie"), ACTOR_COOKIE_NAME));
+}
+
 /**
  * Where to go after unlocking: a same-origin path with its query, or "/".
  * Rejects anything that could leave the site ("//host", "/\host", absolute
- * URLs) and paths back to the PIN screen, and drops Next's internal `_rsc`
- * parameter.
+ * URLs) and the sign-in screen and its routes, and drops Next's internal
+ * `_rsc` parameter.
  */
 export function safeNextPath(value: unknown): string {
   if (typeof value !== "string" || !value.startsWith("/") || value.length > MAX_NEXT_PATH_LENGTH) {
@@ -105,8 +127,7 @@ export function safeNextPath(value: unknown): string {
 
   if (
     url.origin !== PLACEHOLDER_ORIGIN ||
-    url.pathname === UNLOCK_PAGE_PATH ||
-    url.pathname === UNLOCK_API_PATH
+    [UNLOCK_PAGE_PATH, UNLOCK_API_PATH, IDENTITY_API_PATH, LOGOUT_API_PATH].includes(url.pathname)
   ) {
     return "/";
   }
@@ -141,38 +162,47 @@ export type AccessRequest = {
   pathname: string;
   /** The query string with its leading "?", or "". */
   search: string;
+  /** Whether the request carries a name (the `dx_name` cookie). */
+  named: boolean;
   /** Whether the request carries a valid unlock cookie. */
   unlocked: boolean;
 };
 
 export type AccessDecision =
   | { kind: "allow" }
-  | { kind: "deny" }
+  | { kind: "deny"; message: string }
   | { kind: "redirect"; location: string };
 
 /**
- * The proxy's rule for one request.
- * - The PIN screen and `/api/unlock` are always reachable. An unlocked visit to
- *   the PIN screen skips ahead to its `next` path.
- * - Unlocked requests pass.
- * - Locked page loads, and locked browser navigations to an API URL (a PDF
- *   link opened in a new tab), redirect to the PIN screen with `next` set.
- * - Every other locked request is denied (the proxy answers 401).
+ * The proxy's rule for one request. "Signed in" means both the unlock cookie
+ * and a name.
+ * - `/api/unlock` and `/api/logout` are always reachable, and `/api/identity`
+ *   once unlocked.
+ * - The PIN screen is reachable until signed in, and then skips ahead to its
+ *   `next` path. It shows the PIN step, or the name step once unlocked.
+ * - Signed-in requests pass.
+ * - Other page loads, and browser navigations to an API URL (a PDF link
+ *   opened in a new tab), redirect to the PIN screen with `next` set.
+ * - Every other request is denied (the proxy answers 401 with the message).
  */
 export function decideAccess(request: AccessRequest): AccessDecision {
-  const { method, navigation, pathname, search, unlocked } = request;
+  const { method, named, navigation, pathname, search, unlocked } = request;
 
-  if (pathname === UNLOCK_API_PATH) {
+  if (pathname === UNLOCK_API_PATH || pathname === LOGOUT_API_PATH) {
     return { kind: "allow" };
   }
 
+  if (pathname === IDENTITY_API_PATH) {
+    return unlocked ? { kind: "allow" } : { kind: "deny", message: LOCKED_MESSAGE };
+  }
+
   if (pathname === UNLOCK_PAGE_PATH) {
-    return unlocked
+    return unlocked && named
       ? { kind: "redirect", location: safeNextPath(new URLSearchParams(search).get("next")) }
       : { kind: "allow" };
   }
 
-  if (unlocked) {
+  if (unlocked && named) {
     return { kind: "allow" };
   }
 
@@ -183,5 +213,5 @@ export function decideAccess(request: AccessRequest): AccessDecision {
     return { kind: "redirect", location: buildUnlockHref({ next: `${pathname}${search}` }) };
   }
 
-  return { kind: "deny" };
+  return { kind: "deny", message: unlocked ? UNNAMED_MESSAGE : LOCKED_MESSAGE };
 }

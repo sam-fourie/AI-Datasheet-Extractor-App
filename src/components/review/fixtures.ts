@@ -91,18 +91,24 @@ function providerMeta(
 function buildDetail(input: {
   comparison?: SubmissionComparison;
   createdAt: string;
+  createdBy?: string;
   extraction: ExtractionSnapshot;
   intake: SubmissionIntakeSnapshot;
   review: SubmissionHumanReview;
   reviewedAt?: string | null;
+  reviewedBy?: string;
   submissionId: string;
   updatedAt?: string;
+  updatedBy?: string;
 }): SubmissionDetail {
   const counts = countReviewDecisions(input.review);
   const reviewStatus = deriveSubmissionReviewStatus(input.review);
 
   return {
     ...(input.comparison ? { comparison: input.comparison } : {}),
+    ...(input.createdBy ? { createdBy: input.createdBy } : {}),
+    ...(reviewStatus === "reviewed" && input.reviewedBy ? { reviewedBy: input.reviewedBy } : {}),
+    ...(input.updatedBy ?? input.createdBy ? { updatedBy: input.updatedBy ?? input.createdBy } : {}),
     createdAt: input.createdAt,
     extraction: input.extraction,
     intake: input.intake,
@@ -123,6 +129,7 @@ function toModelRun(detail: SubmissionDetail, baseline: SubmissionDetail | null)
         ? computeSubmissionAgreement(baseline, detail.extraction)
         : null,
     createdAt: detail.createdAt,
+    ...(detail.createdBy ? { createdBy: detail.createdBy } : {}),
     isBaseline: !detail.comparison,
     providerMeta: detail.providerMeta,
     reviewProgress: deriveReviewProgress(detail.reviewDecisionCounts),
@@ -250,6 +257,7 @@ const ne555BaselineExtraction: ExtractionSnapshot = {
 
 export const ne555BaselineFixture: SubmissionDetail = buildDetail({
   createdAt: "2026-03-27T14:02:10.000Z",
+  createdBy: "Sam Fourie",
   extraction: ne555BaselineExtraction,
   intake: {
     packageCategory: "Small Outline Packages",
@@ -277,8 +285,10 @@ export const ne555BaselineFixture: SubmissionDetail = buildDetail({
     };
   })(),
   reviewedAt: "2026-09-21T10:48:00.000Z",
+  reviewedBy: "Alex Morgan",
   submissionId: "fx-ne555-baseline",
   updatedAt: "2026-09-21T10:48:00.000Z",
+  updatedBy: "Alex Morgan",
 });
 
 function ne555Rerun(
@@ -315,6 +325,7 @@ function ne555Rerun(
       baselineSubmissionId: ne555BaselineFixture.submissionId,
     },
     createdAt,
+    createdBy: "Jordan Lee",
     extraction,
     intake: ne555BaselineFixture.intake,
     review: review ? review(extraction) : createDefaultSubmissionReview(extraction),

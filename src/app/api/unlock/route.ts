@@ -4,6 +4,7 @@ import {
   buildUnlockHref,
   createUnlockToken,
   isCorrectPin,
+  readActorName,
   safeNextPath,
   UNLOCK_COOKIE_NAME,
   UNLOCK_MAX_AGE_SECONDS,
@@ -30,10 +31,13 @@ function redirectTo(path: string) {
 
 /**
  * The PIN screen posts the PIN and `next` here as form data. The PIN boxes
- * send `Accept: application/json` and get JSON back: 200 `{ next }` with the
- * unlock cookie, or 401 `{ code: "incorrect-pin", error }`. A plain form post
- * (no JavaScript) gets a 303 to `next`, or back to the PIN screen with an
- * error. This is the one route that doesn't call `requireAuthorizedRequest`.
+ * send `Accept: application/json` and get JSON back: 200 `{ needsName, next }`
+ * with the unlock cookie, where `needsName` means this device has no name yet
+ * so the screen asks "Who is this?" next, or 401
+ * `{ code: "incorrect-pin", error }`. A plain form post (no JavaScript) gets a
+ * 303 to `next`, which the proxy sends on to the name step when needed, or
+ * back to the PIN screen with an error. It doesn't call
+ * `requireAuthorizedRequest`.
  */
 export async function POST(request: NextRequest) {
   const form = await request.formData().catch(() => null);
@@ -50,7 +54,7 @@ export async function POST(request: NextRequest) {
   }
 
   const response = wantsJson
-    ? NextResponse.json({ next }, { headers: NO_STORE })
+    ? NextResponse.json({ needsName: readActorName(request) === null, next }, { headers: NO_STORE })
     : redirectTo(next);
 
   response.cookies.set(UNLOCK_COOKIE_NAME, createUnlockToken(), {

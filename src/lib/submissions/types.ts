@@ -97,13 +97,22 @@ export type SubmissionAccuracyBucket =
 export type SubmissionSummary = {
   comparison?: SubmissionComparison;
   createdAt: string;
+  /**
+   * Who ran the extraction or re-run: the name from "Who is this?". The name
+   * fields are missing on submissions from before September 29, 2026.
+   */
+  createdBy?: string;
   intake: SubmissionIntakeSnapshot;
   providerMeta: ProviderMeta;
   reviewDecisionCounts: ReviewDecisionCounts;
   reviewStatus: SubmissionReviewStatus;
   reviewedAt: string | null;
+  /** Whose save completed the review, while it stays reviewed. */
+  reviewedBy?: string;
   submissionId: string;
   updatedAt: string;
+  /** Who last saved the review, or who created the submission. */
+  updatedBy?: string;
 };
 
 export type SubmissionDetail = SubmissionSummary & {
@@ -201,6 +210,7 @@ export type SubmissionComparison = {
 export type SubmissionModelRun = {
   agreement: SubmissionAgreement | null;
   createdAt: string;
+  createdBy?: string;
   isBaseline: boolean;
   providerMeta: ProviderMeta;
   reviewProgress: ReviewProgress;
@@ -245,6 +255,7 @@ export type SubmissionListRun = {
   baselineReviewedDecisions: number | null;
   baselineTotalDecisions: number | null;
   createdAt: string;
+  createdBy?: string;
   /** True when isScoredAgreement(agreement) holds. */
   isScored: boolean;
   providerMeta: ProviderMeta;
@@ -254,6 +265,7 @@ export type SubmissionListRun = {
 
 export type DatasheetGroupBaseline = {
   createdAt: string;
+  createdBy?: string;
   packageCategory: PackageCategory;
   partNumber: string;
   pdfAvailable: boolean;
@@ -262,6 +274,7 @@ export type DatasheetGroupBaseline = {
   providerMeta: ProviderMeta;
   reviewProgress: ReviewProgress;
   reviewedAt: string | null;
+  reviewedBy?: string;
   source: SubmissionSourceSummary;
   submissionId: string;
   updatedAt: string;

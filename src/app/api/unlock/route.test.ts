@@ -1,7 +1,13 @@
 import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
 
-import { APP_PIN, createUnlockToken, UNLOCK_COOKIE_NAME, UNLOCK_MAX_AGE_SECONDS } from "@/lib/auth";
+import {
+  ACTOR_COOKIE_NAME,
+  APP_PIN,
+  createUnlockToken,
+  UNLOCK_COOKIE_NAME,
+  UNLOCK_MAX_AGE_SECONDS,
+} from "@/lib/auth";
 
 import { POST } from "./route";
 
@@ -12,11 +18,11 @@ function submit(fields: Record<string, string>, origin = "http://localhost:3000"
 }
 
 /** What the PIN boxes send: the same form data, asking for JSON. */
-function check(fields: Record<string, string>) {
+function check(fields: Record<string, string>, cookie?: string) {
   return POST(
     new NextRequest("http://localhost:3000/api/unlock", {
       body: new URLSearchParams(fields),
-      headers: { accept: "application/json" },
+      headers: { accept: "application/json", ...(cookie ? { cookie } : {}) },
       method: "POST",
     }),
   );
@@ -75,7 +81,7 @@ describe("POST /api/unlock", () => {
     const response = await check({ next: "/reports", pin: APP_PIN });
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ next: "/reports" });
+    expect(await response.json()).toEqual({ needsName: true, next: "/reports" });
     expect(response.headers.get("set-cookie")).toContain(`${UNLOCK_COOKIE_NAME}=${createUnlockToken()}`);
     expect(response.headers.get("cache-control")).toBe("no-store");
   });
@@ -88,9 +94,15 @@ describe("POST /api/unlock", () => {
     expect(response.headers.get("set-cookie")).toBeNull();
   });
 
+  it("skips the name step when this device already has a name", async () => {
+    const response = await check({ next: "/reports", pin: APP_PIN }, `${ACTOR_COOKIE_NAME}=Sam%20Fourie`);
+
+    expect(await response.json()).toEqual({ needsName: false, next: "/reports" });
+  });
+
   it("keeps next on the site in JSON answers too", async () => {
     const response = await check({ next: "https://evil.example/", pin: APP_PIN });
 
-    expect(await response.json()).toEqual({ next: "/" });
+    expect(await response.json()).toEqual({ needsName: true, next: "/" });
   });
 });

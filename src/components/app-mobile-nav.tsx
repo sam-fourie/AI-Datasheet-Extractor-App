@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { FileSearch } from "lucide-react";
 import { usePathname } from "next/navigation";
 
@@ -31,8 +32,9 @@ export function BrandGlyph({ className }: { className?: string }) {
 /**
  * Top bar below 1024 px (spec §1.4). Sticky everywhere except the review
  * routes, where the review header takes over the top of the viewport.
+ * `account` is the account button at the far end (AppMobileAccount).
  */
-export function AppMobileNav() {
+export function AppMobileNav({ account }: { account?: ReactNode }) {
   const pathname = usePathname();
   const isReviewRoute = REVIEW_ROUTE_PATTERN.test(pathname);
 
@@ -50,43 +52,46 @@ export function AppMobileNav() {
       >
         <BrandGlyph />
       </AppLink>
-      <nav aria-label="Primary" className="min-w-0">
-        <ul className="flex items-center gap-0.5">
-          {PRIMARY_NAV_ITEMS.map((item) => {
-            const isActive = isPrimaryNavItemActive(pathname, item.href);
+      <div className="flex min-w-0 items-center gap-2">
+        <nav aria-label="Primary" className="min-w-0">
+          <ul className="flex items-center gap-0.5">
+            {PRIMARY_NAV_ITEMS.map((item) => {
+              const isActive = isPrimaryNavItemActive(pathname, item.href);
 
-            return (
-              <li key={item.href}>
-                <AppLink
-                  aria-current={isActive ? "page" : undefined}
-                  className={cn(
-                    "flex h-8 items-center gap-1.5 rounded-sm px-2.5 text-callout font-medium whitespace-nowrap transition-colors duration-(--ui-duration-fast) ease-ui max-[359px]:px-2 pointer-coarse:h-11",
-                    isActive
-                      ? "bg-surface-selected text-text"
-                      : "text-text-muted hover:bg-surface-hover hover:text-text",
-                  )}
-                  href={item.href}
-                >
-                  <PrimaryNavIcon
-                    className="max-[359px]:hidden"
-                    icon={item.icon}
-                    isActive={isActive}
-                  />
-                  <span>
-                    {item.shortLabel}
-                    {item.label !== item.shortLabel &&
-                    item.label.startsWith(item.shortLabel) ? (
-                      <span className="sr-only">
-                        {item.label.slice(item.shortLabel.length)}
-                      </span>
-                    ) : null}
-                  </span>
-                </AppLink>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
+              return (
+                <li key={item.href}>
+                  <AppLink
+                    aria-current={isActive ? "page" : undefined}
+                    className={cn(
+                      "flex h-8 items-center gap-1.5 rounded-sm px-2.5 text-callout font-medium whitespace-nowrap transition-colors duration-(--ui-duration-fast) ease-ui max-[359px]:px-2 pointer-coarse:h-11",
+                      isActive
+                        ? "bg-surface-selected text-text"
+                        : "text-text-muted hover:bg-surface-hover hover:text-text",
+                    )}
+                    href={item.href}
+                  >
+                    <PrimaryNavIcon
+                      className="max-[359px]:hidden"
+                      icon={item.icon}
+                      isActive={isActive}
+                    />
+                    <span>
+                      {item.shortLabel}
+                      {item.label !== item.shortLabel &&
+                      item.label.startsWith(item.shortLabel) ? (
+                        <span className="sr-only">
+                          {item.label.slice(item.shortLabel.length)}
+                        </span>
+                      ) : null}
+                    </span>
+                  </AppLink>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+        {account}
+      </div>
     </header>
   );
 }

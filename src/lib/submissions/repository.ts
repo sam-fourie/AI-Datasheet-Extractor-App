@@ -19,6 +19,7 @@ import {
   deriveReviewProgress,
   createDefaultSubmissionReview,
   deriveSubmissionReviewStatus,
+  resolveReviewCompletion,
   normalizeSubmissionReview,
 } from "@/lib/submissions/review";
 import {
@@ -58,13 +59,28 @@ const COLLECTION_NAME = "datasheet_submissions";
 type SubmissionDocument = {
   comparison?: SubmissionRerunLink;
   createdAt: Date;
+  /** The "Who is this?" name of whoever ran it. Missing before Sept 29, 2026. */
+  createdBy?: string;
   extraction: ExtractionSnapshot;
   intake: SubmissionIntakeSnapshot;
   review: SubmissionHumanReview;
   reviewedAt: Date | null;
+  /** Whose save completed the review (`resolveReviewCompletion`). */
+  reviewedBy?: string | null;
   reviewStatus: SubmissionReviewStatus;
   updatedAt: Date;
+  /** Who last saved the review, or who created the submission. */
+  updatedBy?: string;
 };
+
+/** The optional name fields a mapped submission carries. */
+function attributionOf(document: Pick<SubmissionDocument, "createdBy" | "reviewedBy" | "updatedBy">, reviewed: boolean) {
+  return {
+    ...(document.createdBy ? { createdBy: document.createdBy } : {}),
+    ...(reviewed && document.reviewedBy ? { reviewedBy: document.reviewedBy } : {}),
+    ...(document.updatedBy ? { updatedBy: document.updatedBy } : {}),
+  };
+}
 
 function toIsoString(value: Date | null) {
   return value ? value.toISOString() : null;
@@ -113,6 +129,7 @@ function mapSubmissionDocument(
 
   return {
     ...(comparison ? { comparison } : {}),
+    ...attributionOf(document, reviewStatus === "reviewed"),
     createdAt: document.createdAt.toISOString(),
     extraction: document.extraction,
     intake: document.intake,
@@ -134,6 +151,9 @@ function mapSubmissionSummary(
 
   return {
     ...(detail.comparison ? { comparison: detail.comparison } : {}),
+    ...(detail.createdBy ? { createdBy: detail.createdBy } : {}),
+    ...(detail.reviewedBy ? { reviewedBy: detail.reviewedBy } : {}),
+    ...(detail.updatedBy ? { updatedBy: detail.updatedBy } : {}),
     createdAt: detail.createdAt,
     intake: detail.intake,
     providerMeta: detail.providerMeta,
@@ -165,6 +185,8 @@ function toObjectId(submissionId: string): ObjectId | null {
 
 export async function createSubmission(input: {
   comparison?: SubmissionRerunLink;
+  /** Who ran it: the request's "Who is this?" name (`readActorName`). */
+  createdBy?: string | null;
   extraction: ExtractionSnapshot;
   intake: SubmissionIntakeSnapshot;
   submissionId?: string;
@@ -181,13 +203,16 @@ export async function createSubmission(input: {
     throw new Error("Invalid submission id.");
   }
 
+  const createdBy = input.createdBy ?? null;
   const document: SubmissionDocument = {
     ...(input.comparison ? { comparison: input.comparison } : {}),
+    ...(createdBy ? { createdBy, updatedBy: createdBy } : {}),
     createdAt: now,
     extraction: input.extraction,
     intake: input.intake,
     review,
     reviewedAt: reviewStatus === "reviewed" ? now : null,
+    reviewedBy: reviewStatus === "reviewed" ? createdBy : null,
     reviewStatus,
     updatedAt: now,
   };
@@ -276,6 +301,8 @@ export async function getSubmissionDetail(
 export async function updateSubmissionReview(
   submissionId: string,
   payload: SubmissionReviewPayload,
+  /** Who is saving: the request's "Who is this?" name (`readActorName`). */
+  actor: string | null = null,
 ): Promise<SubmissionDetail | null> {
   const objectId = toObjectId(submissionId);
 
@@ -296,12 +323,17 @@ export async function updateSubmissionReview(
   const previousReviewStatus = deriveSubmissionReviewStatus(existingDocument.review);
   const updatedAt = new Date();
   const reviewStatus = deriveSubmissionReviewStatus(review);
-  const reviewedAt =
-    reviewStatus === "reviewed"
-      ? previousReviewStatus === "reviewed" && existingDocument.reviewedAt
-        ? existingDocument.reviewedAt
-        : updatedAt
-      : null;
+  const { reviewedAt, reviewedBy } = resolveReviewCompletion({
+    actor,
+    nextStatus: reviewStatus,
+    now: updatedAt,
+    previous: {
+      reviewedAt: existingDocument.reviewedAt,
+      reviewedBy: existingDocument.reviewedBy ?? null,
+      status: previousReviewStatus,
+    },
+  });
+  const updatedBy = actor ?? existingDocument.updatedBy;
 
   await collection.updateOne(
     {
@@ -311,8 +343,10 @@ export async function updateSubmissionReview(
       $set: {
         review,
         reviewedAt,
+        reviewedBy,
         reviewStatus,
         updatedAt,
+        ...(actor ? { updatedBy: actor } : {}),
       },
     },
   );
@@ -323,8 +357,10 @@ export async function updateSubmissionReview(
     _id: objectId,
     review,
     reviewedAt,
+    reviewedBy,
     reviewStatus,
     updatedAt,
+    ...(updatedBy ? { updatedBy } : {}),
     },
     await findBaselineDocument(existingDocument),
   );
@@ -372,6 +408,7 @@ function toModelRun(
         ? computeSubmissionAgreement(baseline, document.extraction)
         : null,
     createdAt: document.createdAt.toISOString(),
+    ...(document.createdBy ? { createdBy: document.createdBy } : {}),
     isBaseline,
     providerMeta: document.extraction.providerMeta,
     reviewProgress: deriveReviewProgress(countReviewDecisions(document.review)),
@@ -438,11 +475,13 @@ type LeanSubmissionDocument = Omit<SubmissionDocument, "extraction"> & {
 const LEAN_PROJECTION = {
   comparison: 1,
   createdAt: 1,
+  createdBy: 1,
   "extraction.providerMeta": 1,
   intake: 1,
   review: 1,
   reviewStatus: 1,
   reviewedAt: 1,
+  reviewedBy: 1,
   updatedAt: 1,
 } as const;
 
@@ -474,15 +513,19 @@ function toGroupBaseline(document: WithId<LeanSubmissionDocument>): DatasheetGro
   const submissionId = document._id.toHexString();
   const pdf = getSubmissionPdfHref(submissionId, document.intake.sourceMeta);
 
+  const reviewedAt = reviewedAtIso(document);
+
   return {
     createdAt: document.createdAt.toISOString(),
+    ...(document.createdBy ? { createdBy: document.createdBy } : {}),
     packageCategory: document.intake.packageCategory,
     partNumber: document.intake.partNumber,
     pdfAvailable: pdf.available,
     pdfHref: pdf.available ? pdf.href : null,
     providerMeta: document.extraction.providerMeta,
     reviewProgress: toReviewProgress(document.review),
-    reviewedAt: reviewedAtIso(document),
+    reviewedAt,
+    ...(reviewedAt && document.reviewedBy ? { reviewedBy: document.reviewedBy } : {}),
     source: describeSubmissionSource(document.intake.sourceMeta),
     submissionId,
     updatedAt: document.updatedAt.toISOString(),
@@ -500,6 +543,7 @@ function toListRun(
     baselineReviewedDecisions: agreement?.baselineReviewedDecisions ?? null,
     baselineTotalDecisions: agreement?.baselineTotalDecisions ?? null,
     createdAt: document.createdAt.toISOString(),
+    ...(document.createdBy ? { createdBy: document.createdBy } : {}),
     isScored: isScoredAgreement(agreement),
     providerMeta: document.extraction.providerMeta,
     reviewProgress: toReviewProgress(document.review),

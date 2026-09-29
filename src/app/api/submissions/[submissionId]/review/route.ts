@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
 
 import { requireAuthorizedRequest } from "@/app/api/_lib/access";
+import { readActorName } from "@/lib/auth";
 import { MongoConfigError } from "@/lib/mongodb";
 import {
   formatReviewValidationError,
@@ -62,7 +63,7 @@ export async function PATCH(
     const payload = submissionReviewPayloadSchema.parse(
       (await request.json().catch(() => null)) as unknown,
     );
-    const submission = await updateSubmissionReview(submissionId, payload);
+    const submission = await updateSubmissionReview(submissionId, payload, readActorName(request));
 
     if (!submission) {
       throw new RouteError("Submission not found.", 404);

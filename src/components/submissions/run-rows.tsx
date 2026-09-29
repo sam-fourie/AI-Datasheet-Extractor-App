@@ -58,6 +58,9 @@ export function RunRows({ groupId, partNumber, runs }: RunRowsProps) {
                 {runLabel}
                 <span className="sr-only"> run of {partNumber}</span>
               </AppLink>
+              {run.createdBy ? (
+                <p className="truncate text-caption text-text-muted max-md:hidden">by {run.createdBy}</p>
+              ) : null}
               <div className="flex min-w-0 items-center gap-1.5 text-caption text-text-muted md:hidden">
                 <span className="min-w-0 truncate">
                   <RunAgreement run={run} />

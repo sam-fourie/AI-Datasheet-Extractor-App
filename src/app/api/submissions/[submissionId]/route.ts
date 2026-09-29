@@ -1,4 +1,5 @@
 import { requireAuthorizedRequest } from "@/app/api/_lib/access";
+import { readActorName } from "@/lib/auth";
 import { MongoConfigError } from "@/lib/mongodb";
 import {
   deleteSubmission,
@@ -49,16 +50,26 @@ function toRouteError(error: unknown) {
 }
 
 /**
+ * Deleted submissions leave no record to show a name on, so who deleted what
+ * goes to the server log (Vercel runtime logs).
+ */
+function logDeletion(deletedIds: readonly string[], actor: string | null) {
+  console.info(`Deleted ${deletedIds.join(", ")} (by ${actor ?? "an unknown person"}).`);
+}
+
+/**
  * `?cascade=runs` deletes the submission and every re-run compared against it:
  * Mongo documents first, then their retained upload objects best-effort
  * (addendum Q). URL-cache objects are shared and never deleted.
  */
-async function deleteWithRuns(submissionId: string) {
+async function deleteWithRuns(submissionId: string, actor: string | null) {
   const { deletedIds, uploadObjectKeys } = await deleteSubmissionWithRuns(submissionId);
 
   if (deletedIds.length === 0) {
     throw new RouteError("Submission not found.", 404);
   }
+
+  logDeletion(deletedIds, actor);
 
   for (const objectKey of uploadObjectKeys) {
     if (isUrlCacheObjectKey(objectKey)) {
@@ -97,7 +108,7 @@ export async function DELETE(
     }
 
     if (new URL(request.url).searchParams.get("cascade") === "runs") {
-      return await deleteWithRuns(submissionId);
+      return await deleteWithRuns(submissionId, readActorName(request));
     }
 
     const existingSubmission = await getSubmissionDetail(submissionId);
@@ -115,6 +126,8 @@ export async function DELETE(
     if (!didDelete) {
       throw new RouteError("Submission not found.", 404);
     }
+
+    logDeletion([submissionId], readActorName(request));
 
     return Response.json({
       deletedIds: [submissionId],

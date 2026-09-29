@@ -2,11 +2,12 @@ import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
 
-import { createUnlockToken, UNLOCK_COOKIE_NAME } from "@/lib/auth";
+import { ACTOR_COOKIE_NAME, createUnlockToken, UNLOCK_COOKIE_NAME } from "@/lib/auth";
 
 import { config, proxy } from "./proxy";
 
-const UNLOCKED_COOKIE = `${UNLOCK_COOKIE_NAME}=${createUnlockToken()}`;
+const UNLOCKED_ONLY = `${UNLOCK_COOKIE_NAME}=${createUnlockToken()}`;
+const SIGNED_IN = `${UNLOCKED_ONLY}; ${ACTOR_COOKIE_NAME}=Sam%20Fourie`;
 
 function request(
   path: string,
@@ -61,16 +62,35 @@ describe("proxy", () => {
     expect(passesThrough(proxy(request("/api/unlock", { method: "POST", navigate: true })))).toBe(true);
   });
 
-  it("lets unlocked requests through and rejects a forged cookie", () => {
-    expect(passesThrough(proxy(request("/reports", { cookie: UNLOCKED_COOKIE })))).toBe(true);
+  it("lets signed-in requests through and rejects a forged cookie", () => {
+    expect(passesThrough(proxy(request("/reports", { cookie: SIGNED_IN })))).toBe(true);
     expect(
-      passesThrough(proxy(request("/api/submissions/abc", { cookie: UNLOCKED_COOKIE, method: "DELETE" }))),
+      passesThrough(proxy(request("/api/submissions/abc", { cookie: SIGNED_IN, method: "DELETE" }))),
     ).toBe(true);
-    expect(proxy(request("/api/extractions", { cookie: `${UNLOCK_COOKIE_NAME}=1`, method: "POST" })).status).toBe(401);
+    expect(
+      proxy(request("/api/extractions", { cookie: `${UNLOCK_COOKIE_NAME}=1; ${ACTOR_COOKIE_NAME}=Sam`, method: "POST" }))
+        .status,
+    ).toBe(401);
   });
 
-  it("skips the PIN screen once unlocked", () => {
-    const response = proxy(request("/unlock?next=%2Freports", { cookie: UNLOCKED_COOKIE, navigate: true }));
+  it("asks an unlocked visitor with no name who they are", async () => {
+    const page = proxy(request("/submissions", { cookie: UNLOCKED_ONLY, navigate: true }));
+    const api = proxy(request("/api/submissions/abc/review", { cookie: UNLOCKED_ONLY, method: "PATCH" }));
+
+    expect(page.status).toBe(307);
+    expect(page.headers.get("location")).toBe("http://localhost:3000/unlock?next=%2Fsubmissions");
+    expect(api.status).toBe(401);
+    expect(await api.json()).toEqual({ code: "unknown", error: "Enter your name to continue." });
+    expect(passesThrough(proxy(request("/unlock", { cookie: UNLOCKED_ONLY, navigate: true })))).toBe(true);
+    expect(passesThrough(proxy(request("/api/identity", { cookie: UNLOCKED_ONLY, method: "POST" })))).toBe(true);
+  });
+
+  it("always lets Log out through", () => {
+    expect(passesThrough(proxy(request("/api/logout", { method: "POST", navigate: true })))).toBe(true);
+  });
+
+  it("skips the sign-in screen once signed in", () => {
+    const response = proxy(request("/unlock?next=%2Freports", { cookie: SIGNED_IN, navigate: true }));
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe("http://localhost:3000/reports");

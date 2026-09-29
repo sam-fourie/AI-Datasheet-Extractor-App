@@ -4,6 +4,7 @@ import { ObjectId } from "mongodb";
 import { after } from "next/server";
 
 import { requireAuthorizedRequest } from "@/app/api/_lib/access";
+import { readActorName } from "@/lib/auth";
 import { extractDatasheet } from "@/lib/ai";
 import {
   ExtractionCancelledError,
@@ -466,6 +467,7 @@ export async function POST(request: Request) {
     }
 
     const submission = await createSubmission({
+      createdBy: readActorName(request),
       extraction: extractionSnapshot,
       intake: intakeSnapshot,
       submissionId,

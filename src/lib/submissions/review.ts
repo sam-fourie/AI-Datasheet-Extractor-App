@@ -225,6 +225,37 @@ export function deriveSubmissionReviewStatus(
   return countReviewDecisions(review).pending === 0 ? "reviewed" : "pending";
 }
 
+/**
+ * When a saved review counts as completed, and by whom. The first save that
+ * leaves no pending rows sets both. Later saves keep them while the review
+ * stays reviewed, so `reviewedAt` stays the completion time and `reviewedBy`
+ * the person who completed it. A save that brings back a pending row clears
+ * both.
+ */
+export function resolveReviewCompletion(input: {
+  /** Who is saving (the "Who is this?" name), or null when unknown. */
+  actor: string | null;
+  nextStatus: SubmissionReviewStatus;
+  now: Date;
+  previous: {
+    reviewedAt: Date | null;
+    reviewedBy: string | null;
+    status: SubmissionReviewStatus;
+  };
+}): { reviewedAt: Date | null; reviewedBy: string | null } {
+  const { actor, nextStatus, now, previous } = input;
+
+  if (nextStatus !== "reviewed") {
+    return { reviewedAt: null, reviewedBy: null };
+  }
+
+  if (previous.status === "reviewed" && previous.reviewedAt) {
+    return { reviewedAt: previous.reviewedAt, reviewedBy: previous.reviewedBy };
+  }
+
+  return { reviewedAt: now, reviewedBy: actor };
+}
+
 export function deriveSubmissionAccuracyPercentage(input: {
   reviewDecisionCounts: ReviewDecisionCounts;
   reviewStatus: SubmissionReviewStatus;

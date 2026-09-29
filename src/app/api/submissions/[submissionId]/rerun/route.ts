@@ -2,6 +2,7 @@ import { ObjectId } from "mongodb";
 import { after } from "next/server";
 
 import { requireAuthorizedRequest } from "@/app/api/_lib/access";
+import { readActorName } from "@/lib/auth";
 import { extractDatasheet } from "@/lib/ai";
 import { ExtractionTimeoutError } from "@/lib/ai/errors";
 import {
@@ -301,6 +302,7 @@ export async function POST(
       comparison: {
         baselineSubmissionId: baseline.submissionId,
       },
+      createdBy: readActorName(request),
       extraction: buildExtractionSnapshot(extraction),
       intake,
       submissionId: newSubmissionId,

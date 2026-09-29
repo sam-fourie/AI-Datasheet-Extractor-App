@@ -119,6 +119,7 @@ export function ModelRunsSection({
                 <Th className="hidden sm:table-cell" numeric>
                   Est. cost
                 </Th>
+                <Th className="hidden lg:table-cell">By</Th>
                 <Th className="hidden md:table-cell">Date</Th>
                 <Th>
                   <span className="sr-only">Open</span>
@@ -164,6 +165,18 @@ export function ModelRunsSection({
                         ? formatUsd(run.providerMeta.estimatedCostUsd)
                         : "—"}
                     </Td>
+                    <Td className="hidden max-w-40 text-callout text-text-muted lg:table-cell">
+                      {run.createdBy ? (
+                        <span className="block truncate" title={run.createdBy}>
+                          {run.createdBy}
+                        </span>
+                      ) : (
+                        <>
+                          <span aria-hidden="true">—</span>
+                          <span className="sr-only">Unknown</span>
+                        </>
+                      )}
+                    </Td>
                     <Td className="hidden text-callout whitespace-nowrap text-text-muted md:table-cell">
                       <RelativeTime iso={run.createdAt} />
                     </Td>
@@ -188,7 +201,7 @@ export function ModelRunsSection({
                     <span className="font-medium text-text">{run.label}</span>
                     <p className="text-caption text-text-muted">Running…</p>
                   </Td>
-                  <Td colSpan={5}>
+                  <Td colSpan={6}>
                     <Spinner label={`${run.label} is running`} size={14} />
                   </Td>
                 </Tr>

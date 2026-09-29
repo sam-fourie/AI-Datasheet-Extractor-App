@@ -27,6 +27,11 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+/** "Sep 29, 2026, 1:05 PM by Sam Fourie", or just the date for older submissions. */
+function dateBy(iso: string, name: string | undefined) {
+  return name ? `${formatDateTime(iso)} by ${name}` : formatDateTime(iso);
+}
+
 /**
  * The Details list (§4.3 header item 3): identity, source, run metadata and
  * dates, plus the note that the AI output is immutable. Rendered only while
@@ -107,11 +112,11 @@ export function SubmissionDetails({ baselineHref, revisionNote, submission }: Su
     });
   }
 
-  items.push({ term: "Created", value: formatDateTime(submission.createdAt) });
-  items.push({ term: "Updated", value: formatDateTime(submission.updatedAt) });
+  items.push({ term: "Created", value: dateBy(submission.createdAt, submission.createdBy) });
+  items.push({ term: "Updated", value: dateBy(submission.updatedAt, submission.updatedBy) });
   items.push({
     term: "Reviewed",
-    value: submission.reviewedAt ? formatDateTime(submission.reviewedAt) : "Not yet",
+    value: submission.reviewedAt ? dateBy(submission.reviewedAt, submission.reviewedBy) : "Not yet",
   });
 
   return (

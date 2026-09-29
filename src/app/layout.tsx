@@ -3,7 +3,9 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 
 import { AppLink } from "@/components/app-link";
+import { AppMobileAccount } from "@/components/app-mobile-account";
 import { AppMobileNav, BrandGlyph } from "@/components/app-mobile-nav";
+import { SidebarAccount } from "@/components/app-sidebar-account";
 import { SIDEBAR_REVEAL_CLASS_NAME } from "@/components/app-sidebar-classes";
 import { AppSidebarNav } from "@/components/app-sidebar-nav";
 import { BackgroundTasksProvider } from "@/components/background-tasks-provider";
@@ -13,7 +15,8 @@ import { cn, ToastProvider } from "@/components/ui";
 import { getOpenAIModelDefinition } from "@/lib/ai/models";
 import { formatReasoningEffortLabel } from "@/lib/ai/provider-meta";
 import { getDefaultExtractionSettings } from "@/lib/ai/settings";
-import { isUnlockToken, UNLOCK_COOKIE_NAME } from "@/lib/auth";
+import { ACTOR_COOKIE_NAME, isUnlockToken, LOGOUT_API_PATH, UNLOCK_COOKIE_NAME } from "@/lib/auth";
+import { normalizeActorName } from "@/lib/identity";
 
 import "./globals.css";
 
@@ -40,8 +43,8 @@ function formatDefaultModelLabel() {
   return `${modelLabel} · ${formatReasoningEffortLabel(reasoningEffort)}`;
 }
 
-/** The unlocked chrome: skip link, mobile top bar and the desktop sidebar rail. */
-function AppShell({ children }: { children: React.ReactNode }) {
+/** The signed-in chrome: skip link, mobile top bar and the desktop sidebar rail. */
+function AppShell({ actorName, children }: { actorName: string; children: React.ReactNode }) {
   return (
     <>
       <a
@@ -50,7 +53,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
       >
         Skip to content
       </a>
-      <AppMobileNav />
+      <AppMobileNav account={<AppMobileAccount logoutAction={LOGOUT_API_PATH} name={actorName} />} />
       <div className="lg:grid lg:min-h-dvh lg:grid-cols-[var(--ui-rail-width)_minmax(0,1fr)]">
         {/*
           Desktop sidebar: a thin icon rail that holds its grid column,
@@ -86,6 +89,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
               <p>Default model</p>
               <p>{formatDefaultModelLabel()}</p>
             </div>
+            <SidebarAccount logoutAction={LOGOUT_API_PATH} name={actorName} />
           </div>
         </aside>
         <main className="min-w-0 focus:outline-none" id="main" tabIndex={-1}>
@@ -101,11 +105,15 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Presentation only, not the gate: src/proxy.ts sends every locked visit to
-  // the PIN screen and the route handlers check the cookie again. Without the
-  // unlock cookie the only page that renders is the PIN screen, which gets no
-  // sidebar or top bar, so the review queue count is never queried for it.
-  const unlocked = isUnlockToken((await cookies()).get(UNLOCK_COOKIE_NAME)?.value);
+  // Presentation only, not the gate: src/proxy.ts sends every visit without
+  // the unlock cookie and a name to the sign-in screen, and the route handlers
+  // check again. That screen is then the only page that renders without them,
+  // and it gets no sidebar or top bar, so the review queue count is never
+  // queried for it.
+  const cookieStore = await cookies();
+  const actorName = isUnlockToken(cookieStore.get(UNLOCK_COOKIE_NAME)?.value)
+    ? normalizeActorName(cookieStore.get(ACTOR_COOKIE_NAME)?.value)
+    : null;
 
   return (
     <html lang="en" className="h-full antialiased">
@@ -113,8 +121,8 @@ export default async function RootLayout({
         <NavigationGuardProvider>
           <ToastProvider>
             <BackgroundTasksProvider>
-              {unlocked ? (
-                <AppShell>{children}</AppShell>
+              {actorName ? (
+                <AppShell actorName={actorName}>{children}</AppShell>
               ) : (
                 <main className="min-w-0 focus:outline-none" id="main" tabIndex={-1}>
                   {children}

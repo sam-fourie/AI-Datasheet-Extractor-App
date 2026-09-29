@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ACTOR_COOKIE_NAME,
   APP_PIN,
   buildUnlockHref,
   createUnlockToken,
@@ -8,9 +9,12 @@ import {
   isCorrectPin,
   isRequestUnlocked,
   isUnlockToken,
+  LOCKED_MESSAGE,
+  readActorName,
   readCookie,
   safeNextPath,
   UNLOCK_COOKIE_NAME,
+  UNNAMED_MESSAGE,
   type AccessRequest,
 } from "./auth";
 
@@ -102,9 +106,11 @@ describe("safeNextPath", () => {
     }
   });
 
-  it("never points back at the PIN screen", () => {
+  it("never points back at the sign-in screen or its routes", () => {
     expect(safeNextPath("/unlock?next=%2Freports")).toBe("/");
     expect(safeNextPath("/api/unlock")).toBe("/");
+    expect(safeNextPath("/api/identity")).toBe("/");
+    expect(safeNextPath("/api/logout")).toBe("/");
   });
 
   it("drops Next's internal _rsc parameter", () => {
@@ -125,10 +131,34 @@ describe("buildUnlockHref", () => {
   });
 });
 
+describe("readActorName", () => {
+  it("reads and tidies the name cookie", () => {
+    const request = new Request("http://localhost/", {
+      headers: { cookie: `${ACTOR_COOKIE_NAME}=${encodeURIComponent("  Sam   Fourie ")}` },
+    });
+
+    expect(readActorName(request)).toBe("Sam Fourie");
+    expect(readActorName(new Request("http://localhost/"))).toBeNull();
+    expect(
+      readActorName(new Request("http://localhost/", { headers: { cookie: `${ACTOR_COOKIE_NAME}=%20` } })),
+    ).toBeNull();
+  });
+});
+
 describe("decideAccess", () => {
   function request(overrides: Partial<AccessRequest> = {}): AccessRequest {
-    return { method: "GET", navigation: true, pathname: "/", search: "", unlocked: false, ...overrides };
+    return {
+      method: "GET",
+      named: false,
+      navigation: true,
+      pathname: "/",
+      search: "",
+      unlocked: false,
+      ...overrides,
+    };
   }
+
+  const signedIn = { named: true, unlocked: true };
 
   it("sends locked page loads to the PIN screen with the page as next", () => {
     expect(decideAccess(request())).toEqual({ kind: "redirect", location: "/unlock" });
@@ -145,9 +175,11 @@ describe("decideAccess", () => {
   it("denies locked API calls but redirects a locked navigation to an API URL", () => {
     expect(decideAccess(request({ navigation: false, pathname: "/api/submissions/abc/pdf/viewer" }))).toEqual({
       kind: "deny",
+      message: LOCKED_MESSAGE,
     });
     expect(decideAccess(request({ method: "PATCH", navigation: false, pathname: "/api/submissions/abc/review" }))).toEqual({
       kind: "deny",
+      message: LOCKED_MESSAGE,
     });
     expect(decideAccess(request({ pathname: "/api/submissions/abc/pdf", search: "?page=3" }))).toEqual({
       kind: "redirect",
@@ -156,31 +188,53 @@ describe("decideAccess", () => {
   });
 
   it("denies locked writes to pages", () => {
-    expect(decideAccess(request({ method: "POST", pathname: "/submissions" }))).toEqual({ kind: "deny" });
+    expect(decideAccess(request({ method: "POST", pathname: "/submissions" }))).toEqual({
+      kind: "deny",
+      message: LOCKED_MESSAGE,
+    });
   });
 
-  it("always lets the PIN screen and the unlock route through", () => {
+  it("always lets the PIN screen, the unlock route and Log out through", () => {
     expect(decideAccess(request({ pathname: "/unlock" }))).toEqual({ kind: "allow" });
-    expect(decideAccess(request({ method: "POST", navigation: true, pathname: "/api/unlock" }))).toEqual({
-      kind: "allow",
-    });
+    expect(decideAccess(request({ method: "POST", pathname: "/api/unlock" }))).toEqual({ kind: "allow" });
+    expect(decideAccess(request({ method: "POST", pathname: "/api/logout" }))).toEqual({ kind: "allow" });
   });
 
-  it("lets unlocked requests through", () => {
-    expect(decideAccess(request({ pathname: "/submissions", unlocked: true }))).toEqual({ kind: "allow" });
-    expect(decideAccess(request({ method: "DELETE", navigation: false, pathname: "/api/submissions/abc", unlocked: true }))).toEqual({
-      kind: "allow",
+  it("lets the name route through only once unlocked", () => {
+    expect(decideAccess(request({ method: "POST", navigation: false, pathname: "/api/identity" }))).toEqual({
+      kind: "deny",
+      message: LOCKED_MESSAGE,
     });
+    expect(
+      decideAccess(request({ method: "POST", navigation: false, pathname: "/api/identity", unlocked: true })),
+    ).toEqual({ kind: "allow" });
   });
 
-  it("skips the PIN screen once unlocked", () => {
-    expect(decideAccess(request({ pathname: "/unlock", search: "?next=%2Freports", unlocked: true }))).toEqual({
+  it("sends an unlocked visitor with no name back to the sign-in screen", () => {
+    expect(decideAccess(request({ pathname: "/submissions", unlocked: true }))).toEqual({
+      kind: "redirect",
+      location: "/unlock?next=%2Fsubmissions",
+    });
+    expect(decideAccess(request({ pathname: "/unlock", unlocked: true }))).toEqual({ kind: "allow" });
+    expect(
+      decideAccess(request({ method: "PATCH", navigation: false, pathname: "/api/submissions/abc/review", unlocked: true })),
+    ).toEqual({ kind: "deny", message: UNNAMED_MESSAGE });
+  });
+
+  it("lets signed-in requests through", () => {
+    expect(decideAccess(request({ ...signedIn, pathname: "/submissions" }))).toEqual({ kind: "allow" });
+    expect(
+      decideAccess(request({ ...signedIn, method: "DELETE", navigation: false, pathname: "/api/submissions/abc" })),
+    ).toEqual({ kind: "allow" });
+  });
+
+  it("skips the sign-in screen once signed in", () => {
+    expect(decideAccess(request({ ...signedIn, pathname: "/unlock", search: "?next=%2Freports" }))).toEqual({
       kind: "redirect",
       location: "/reports",
     });
-    expect(decideAccess(request({ pathname: "/unlock", search: "?next=https%3A%2F%2Fevil.example", unlocked: true }))).toEqual({
-      kind: "redirect",
-      location: "/",
-    });
+    expect(
+      decideAccess(request({ ...signedIn, pathname: "/unlock", search: "?next=https%3A%2F%2Fevil.example" })),
+    ).toEqual({ kind: "redirect", location: "/" });
   });
 });

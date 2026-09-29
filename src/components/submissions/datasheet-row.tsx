@@ -27,9 +27,11 @@ import { RunsDisclosureButton, RunsDisclosureGroup } from "./runs-disclosure";
 function ReviewCell({
   progress,
   reviewedAt,
+  reviewedBy,
 }: {
   progress: ReviewProgress;
   reviewedAt: string | null;
+  reviewedBy?: string;
 }) {
   if (progress.state === "reviewed") {
     return (
@@ -37,6 +39,7 @@ function ReviewCell({
         <ScoreBadge kind="accuracy" size="sm" value={progress.accuracy} />
         <span className="text-caption text-text-muted">
           Reviewed
+          {reviewedBy ? ` by ${reviewedBy}` : null}
           {reviewedAt ? (
             <>
               {" · "}
@@ -162,6 +165,7 @@ export function DatasheetRowGroup({ group, query }: DatasheetRowGroupProps) {
               title={sourceTitle}
             >
               {baseline.packageCategory} · {baseline.source.label}
+              {baseline.createdBy ? ` · by ${baseline.createdBy}` : null}
             </p>
             <div className="mt-1 flex min-w-0 items-center gap-1.5 text-caption text-text-muted md:hidden">
               <span className="min-w-0 truncate">{baseline.packageCategory}</span>
@@ -185,6 +189,7 @@ export function DatasheetRowGroup({ group, query }: DatasheetRowGroupProps) {
           <ReviewCell
             progress={baseline.reviewProgress}
             reviewedAt={baseline.reviewedAt}
+            reviewedBy={baseline.reviewedBy}
           />
         </Td>
         <Td className="hidden md:table-cell">
