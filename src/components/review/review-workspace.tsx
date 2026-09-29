@@ -329,7 +329,9 @@ export function ReviewWorkspace({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [arrivalDismissed, setArrivalDismissed] = useState(false);
   const [completion, setCompletion] = useState<CompletionState | null>(null);
-  const [notesExpandedChoice, setNotesExpandedChoice] = useState<boolean | null>(null);
+  // AI review notes open expanded on every page, so they're read before the
+  // rows. Collapsing them lasts for this visit only.
+  const [notesExpanded, setNotesExpanded] = useState(true);
 
   const [autoAdvance, setAutoAdvance] = useStoredBoolean(STORAGE_KEYS.autoAdvance, true);
   const [singleKeyShortcuts, setSingleKeyShortcuts] = useStoredBoolean(
@@ -344,12 +346,6 @@ export function ReviewWorkspace({
   const isMd = useMediaQuery("(min-width: 768px)", true);
   const isCoarse = useMediaQuery("(pointer: coarse)", false);
   const isMobile = useMediaQuery("(max-width: 767.98px)", false);
-
-  // Expanded by default when the AI flagged the extraction and the page opened
-  // in edit mode (§4.3), but collapsed in the mobile intro. The initial mode is
-  // used, so switching modes never moves the list.
-  const notesExpanded =
-    notesExpandedChoice ?? (extraction.review.needsReview && initialMode === "edit" && !isMobile);
 
   const arrived = useMountValue(() => {
     const key = `${ARRIVAL_KEY_PREFIX}${submissionId}`;
@@ -1718,7 +1714,7 @@ export function ReviewWorkspace({
 
                 <AiNotesCallout
                   expanded={notesExpanded}
-                  onExpandedChange={setNotesExpandedChoice}
+                  onExpandedChange={setNotesExpanded}
                   onShowPage={
                     pdfAvailable
                       ? (page) => openPdf(page, { index: 0, key: null, label: null, pages: [page] })

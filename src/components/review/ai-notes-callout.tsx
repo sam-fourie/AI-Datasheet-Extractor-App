@@ -9,10 +9,7 @@ import type { ReviewSummary } from "@/lib/package-categories";
 
 export type AiNotesCalloutProps = {
   className?: string;
-  /**
-   * Initial state when uncontrolled. The workspace passes
-   * `review.needsReview && mode === "edit"` (§4.3 item 4).
-   */
+  /** Initial state when uncontrolled. The workspace controls it and opens it expanded. */
   defaultExpanded?: boolean;
   /** Controlled expanded state (optional). */
   expanded?: boolean;

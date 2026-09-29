@@ -54,8 +54,8 @@ export type ReviewRowProps = {
  * toggle and a same-width label), so switching modes causes no layout shift.
  *
  * DOM: `<div id="row-…" role="group" tabindex>` with `data-row-key`. The
- * active row gets the row-active tint and a 2 px inset accent bar. Clicking
- * anywhere in the row (or focusing into it) activates it.
+ * active row gets the row-active tint, with no accent bar. Clicking anywhere
+ * in the row (or focusing into it) activates it.
  */
 export function ReviewRow({
   accessibleName,
@@ -86,7 +86,7 @@ export function ReviewRow({
       className={cn(
         "relative scroll-mt-[calc(var(--ui-header-height)+var(--ui-toolbar-height)+40px)] scroll-mb-24 transition-colors duration-(--ui-duration-fast) ease-ui focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus",
         showActive
-          ? "bg-row-active shadow-[inset_2px_0_0_var(--ui-accent)]"
+          ? "bg-row-active"
           : "hover:bg-surface-hover",
         divider &&
           "before:pointer-events-none before:absolute before:top-0 before:right-0 before:left-11 before:h-px before:bg-border-subtle",
