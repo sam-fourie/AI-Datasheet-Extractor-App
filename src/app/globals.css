@@ -191,6 +191,11 @@
   --text-stat--line-height: 32px;
   --text-stat--letter-spacing: -0.02em;
   --text-stat--font-weight: 600;
+  /* PIN digits on the PIN screen */
+  --text-code: 32px;
+  --text-code--line-height: 1;
+  --text-code--letter-spacing: -0.02em;
+  --text-code--font-weight: 500;
 
   /* Entrance animations (wrapped in motion-safe: at the call site) */
   --animate-fade-in: ui-fade-in var(--ui-duration) var(--ui-ease) both;
@@ -205,6 +210,13 @@
   /* Pending nav link (useLinkStatus): starts late so fast navigations never flash. */
   --animate-nav-pending: ui-nav-pending 700ms var(--ui-ease) 150ms infinite
     alternate both;
+  /* PIN screen feedback (also motion-safe:): a digit landing in its box, the
+     blinking caret in the next empty box, and the shake after a wrong PIN.
+     The shake's length matches REJECT_MS in pin-entry.tsx. */
+  --animate-digit-in: ui-digit-in var(--ui-duration-fast)
+    var(--ui-ease-emphasized) both;
+  --animate-caret-blink: ui-caret-blink 1.1s var(--ui-ease) infinite;
+  --animate-shake: ui-shake 450ms var(--ui-ease) both;
 
   @keyframes ui-fade-in {
     from {
@@ -248,6 +260,53 @@
   @keyframes ui-nav-pending {
     to {
       opacity: 0.35;
+    }
+  }
+
+  @keyframes ui-digit-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.9);
+    }
+  }
+
+  @keyframes ui-caret-blink {
+    0%,
+    45%,
+    100% {
+      opacity: 1;
+    }
+
+    55%,
+    90% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes ui-shake {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+
+    15% {
+      transform: translateX(-10px);
+    }
+
+    30% {
+      transform: translateX(8px);
+    }
+
+    45% {
+      transform: translateX(-6px);
+    }
+
+    60% {
+      transform: translateX(4px);
+    }
+
+    75% {
+      transform: translateX(-2px);
     }
   }
 }

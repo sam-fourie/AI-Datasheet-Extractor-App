@@ -52,13 +52,15 @@ export function isUnlockToken(value: string | null | undefined): boolean {
   return typeof value === "string" && value.length > 0 && safeEqual(value, createUnlockToken());
 }
 
-/** One cookie's value from a `Cookie` request header, or null. */
+/**
+ * One cookie's value from a `Cookie` request header, or null. When the name
+ * repeats, the last value wins, as in Next's `request.cookies`, so the proxy
+ * and the route handlers always read the same value.
+ */
 export function readCookie(cookieHeader: string | null | undefined, name: string): string | null {
-  if (!cookieHeader) {
-    return null;
-  }
+  let value: string | null = null;
 
-  for (const part of cookieHeader.split(";")) {
+  for (const part of cookieHeader?.split(";") ?? []) {
     const separator = part.indexOf("=");
 
     if (separator === -1 || part.slice(0, separator).trim() !== name) {
@@ -68,13 +70,13 @@ export function readCookie(cookieHeader: string | null | undefined, name: string
     const raw = part.slice(separator + 1).trim();
 
     try {
-      return decodeURIComponent(raw);
+      value = decodeURIComponent(raw);
     } catch {
-      return raw;
+      value = raw;
     }
   }
 
-  return null;
+  return value;
 }
 
 /** Whether a request carries a valid unlock cookie. */

@@ -14,6 +14,12 @@ import {
   type AccessRequest,
 } from "./auth";
 
+describe("APP_PIN", () => {
+  it("is digits only, which the PIN boxes and the numeric keypad assume", () => {
+    expect(APP_PIN).toMatch(/^\d{4,8}$/);
+  });
+});
+
 describe("isCorrectPin", () => {
   it("accepts the PIN, ignoring surrounding spaces", () => {
     expect(isCorrectPin(APP_PIN)).toBe(true);
@@ -49,6 +55,10 @@ describe("readCookie", () => {
     expect(readCookie(`x${UNLOCK_COOKIE_NAME}=abc`, UNLOCK_COOKIE_NAME)).toBeNull();
     expect(readCookie("a=1", UNLOCK_COOKIE_NAME)).toBeNull();
     expect(readCookie(null, UNLOCK_COOKIE_NAME)).toBeNull();
+  });
+
+  it("takes the last value when the name repeats, like Next's request.cookies", () => {
+    expect(readCookie(`${UNLOCK_COOKIE_NAME}=first; ${UNLOCK_COOKIE_NAME}=last`, UNLOCK_COOKIE_NAME)).toBe("last");
   });
 
   it("decodes encoded values", () => {

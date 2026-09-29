@@ -17,30 +17,41 @@ function isHttpsRequest(request: NextRequest) {
   );
 }
 
-/** 303, so the browser follows the form POST with a GET. */
-function redirectTo(request: NextRequest, path: string) {
-  const response = NextResponse.redirect(new URL(path, request.nextUrl), 303);
+const NO_STORE = { "Cache-Control": "no-store" };
 
-  response.headers.set("Cache-Control", "no-store");
-
-  return response;
+/**
+ * A 303, so the browser follows the form POST with a GET. The Location is
+ * relative, so the browser stays on the host it used: the route's own URL can
+ * name a different host (in dev it's always localhost).
+ */
+function redirectTo(path: string) {
+  return new NextResponse(null, { headers: { ...NO_STORE, Location: path }, status: 303 });
 }
 
 /**
- * The PIN screen's form posts here as a plain HTML form, so it works without
- * JavaScript. The right PIN sets the unlock cookie and returns to `next`. A
- * wrong one goes back to the PIN screen with an error. This is the one route
- * that doesn't call `requireAuthorizedRequest`.
+ * The PIN screen posts the PIN and `next` here as form data. The PIN boxes
+ * send `Accept: application/json` and get JSON back: 200 `{ next }` with the
+ * unlock cookie, or 401 `{ code: "incorrect-pin", error }`. A plain form post
+ * (no JavaScript) gets a 303 to `next`, or back to the PIN screen with an
+ * error. This is the one route that doesn't call `requireAuthorizedRequest`.
  */
 export async function POST(request: NextRequest) {
   const form = await request.formData().catch(() => null);
   const next = safeNextPath(form?.get("next"));
+  const wantsJson = request.headers.get("accept")?.includes("application/json") ?? false;
 
   if (!isCorrectPin(form?.get("pin"))) {
-    return redirectTo(request, buildUnlockHref({ failed: true, next }));
+    return wantsJson
+      ? NextResponse.json(
+          { code: "incorrect-pin", error: "Incorrect PIN." },
+          { headers: NO_STORE, status: 401 },
+        )
+      : redirectTo(buildUnlockHref({ failed: true, next }));
   }
 
-  const response = redirectTo(request, next);
+  const response = wantsJson
+    ? NextResponse.json({ next }, { headers: NO_STORE })
+    : redirectTo(next);
 
   response.cookies.set(UNLOCK_COOKIE_NAME, createUnlockToken(), {
     httpOnly: true,
