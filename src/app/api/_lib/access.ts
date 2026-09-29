@@ -1,39 +1,23 @@
-import { BASIC_AUTH_CHALLENGE, checkRequestAccess } from "@/lib/auth";
+import { isRequestUnlocked, LOCKED_MESSAGE } from "@/lib/auth";
 
 /*
- * The route-handler side of the access gate (the logic lives in
- * src/lib/auth.ts). src/proxy.ts runs the same check optimistically for every
- * page and API request; this is the authoritative check for mutations.
+ * The route-handler side of the PIN gate (the logic lives in src/lib/auth.ts).
+ * src/proxy.ts runs the same check for every page and API request; this is
+ * the check next to the data.
  */
-export {
-  ACCESS_ENV_VAR,
-  checkAccess,
-  parseBasicAuthorization,
-  type AccessDecision,
-  type AccessEnv,
-} from "@/lib/auth";
 
 /**
- * Call at the top of a mutating route handler: returns an error `Response` to
- * send as-is when the request is not authorized, or null to continue.
+ * Call at the top of every route handler except `/api/unlock`: returns a 401
+ * `Response` to send as-is when the request has no valid unlock cookie, or
+ * null to continue.
  */
 export function requireAuthorizedRequest(request: Request): Response | null {
-  const decision = checkRequestAccess(request.headers.get("authorization"));
-
-  if (decision.ok) {
+  if (isRequestUnlocked(request)) {
     return null;
   }
 
   return Response.json(
-    {
-      code: decision.status === 401 ? "unknown" : "not-configured",
-      error: decision.message,
-    },
-    {
-      headers: decision.challenge
-        ? { "WWW-Authenticate": BASIC_AUTH_CHALLENGE }
-        : undefined,
-      status: decision.status,
-    },
+    { code: "unknown", error: LOCKED_MESSAGE },
+    { headers: { "Cache-Control": "no-store" }, status: 401 },
   );
 }

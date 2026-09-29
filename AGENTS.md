@@ -59,6 +59,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   - `icon.svg` redraws it on a 32-unit grid so the strokes stay crisp at 16 and 32 px. `favicon.ico` holds 16, 32 and 48 px renders of `icon.svg`.
   - `apple-icon.png` is 180 px and full bleed, because iOS applies its own mask.
   - `opengraph-image.png` (1200 × 630, with its `.alt.txt`) is the link preview for every page. Its text is set in Inter, the open-licence stand-in for SF Pro.
+  - The matcher in `src/proxy.ts` must leave these files outside the access gate, like `favicon.ico`. The PIN screen shows them, and link unfurlers fetch the preview image without a session. `src/proxy.test.ts` checks this.
   - Pages must not set `openGraph`, because that replaces the root layout's object. og:title already falls back to each page's title.
 
 ## Navigation
@@ -89,7 +90,12 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   - `datasheets/submissions/{submissionId}/{file}`: retained uploads, one per submission. Re-runs copy the source object to their own key.
   - `datasheets/url-cache/{sha256(normalizedUrl)}/{contentSha256}.pdf`: the exact bytes extracted from a URL source (`UrlSourceMeta.contentSha256`). `…/legacy.pdf` holds a later vendor copy for submissions without `contentSha256`, or whose content object is missing. Helpers are in `src/lib/pdf-cache.ts`. The extraction route writes the extracted bytes under the content key in `after()`, and `cacheUrlSourcePdf` skips the Put when HEAD finds the object. These objects are shared by every submission of that URL, and no submission delete ever removes them.
 - `vercel.json` sets `supportsCancellation` for `src/app/api/extractions/route.ts`, so `request.signal` fires when the client cancels. The route checks the signal right before `createSubmission` and returns 499 `{ code: "cancelled" }` without saving.
-- Access: `APP_BASIC_AUTH` (`username:password`) is an HTTP Basic login. The logic lives in `src/lib/auth.ts`. `src/proxy.ts` checks every page and API request except `_next/static`, `_next/image` and the favicon, and `requireAuthorizedRequest` in `src/app/api/_lib/access.ts` checks every mutating route handler again as the authoritative gate. New mutating routes must call it. The gate is opt-in: unset, every request is allowed.
+- Access: one shared PIN, `APP_PIN` in `src/lib/auth.ts`, hardcoded on purpose with no environment variable. The PIN screen `/unlock` posts a plain form to `/api/unlock`, which sets the HttpOnly `dx_unlock` cookie for 30 days. The cookie holds an HMAC keyed by the PIN, so changing `APP_PIN` signs everyone out.
+  - `src/proxy.ts` applies `decideAccess` to every request except `_next/` assets and the brand images. Locked page loads, and locked browser navigations to an API URL such as a PDF link, redirect to `/unlock?next=…`. Every other locked request gets a 401 `{ code: "unknown", error }`.
+  - `requireAuthorizedRequest` in `src/app/api/_lib/access.ts` checks the cookie again in every route handler except `/api/unlock`. New routes must call it.
+  - Read `next` only through `safeNextPath`, which keeps same-site paths and rejects anything that could leave the site.
+  - The root layout reads the cookie only to render the PIN screen without the shell. It is not the gate.
+  - The PIN is in the source and the repository is public, so treat it as a speed bump against casual visitors and crawlers, not a secret. There is no limit on attempts.
 - Vendor PDF URLs are only fetched through `readPdfFromUrl` in `src/lib/pdf-source.ts`, which uses the guarded downloader in `src/lib/public-fetch.ts` (no private or internal addresses, redirects re-checked, the body capped at `MAX_PDF_BYTES` while streaming). Never `fetch` a user-supplied URL directly.
 - Upload URLs sign the declared `Content-Type` and `Content-Length`. The extraction route HEADs the pending object and rejects it when it is missing, larger than `MAX_PDF_BYTES` or a different size from the one claimed, before reading it. R2 reads stop at `MAX_PDF_BYTES` (`R2ObjectTooLargeError`).
 - The Mongo client is created with `ignoreUndefined: true`, so optional fields are omitted rather than stored as null. Reviews saved before September 2026 can still hold null optional fields (for example `correctedStatus: null`); the review payload schema in `src/lib/submissions/schemas.ts` treats null as unset, and any new optional field must do the same.
@@ -160,6 +166,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Route Map
 
+- `/unlock` is the PIN screen, rendered without the app shell. With `/api/unlock` and the brand images, it is all a visitor without the unlock cookie can reach.
 - `/` is New extraction (intake only), in the `src/app/(intake)/` route group together with its loading skeleton. On success it hands off to the review page through the session-storage arrival key.
 - `/submissions` is the Submissions list: baseline submissions with their model runs nested, plus search, category, status and sort. The list page lives in the `src/app/submissions/(list)/` route group so its loading state never wraps the review route.
 - `/submissions/[submissionId]` is the review workspace for baselines and re-runs. Unknown or malformed ids answer with an HTTP 404: `layout.tsx` in that segment runs the lean `submissionExists` check and calls `notFound()` before the segment's `loading.tsx` starts streaming, and `src/app/submissions/not-found.tsx` renders the page and its title.

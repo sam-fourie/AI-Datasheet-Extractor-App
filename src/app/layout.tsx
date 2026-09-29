@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 
 import { AppLink } from "@/components/app-link";
 import { AppMobileNav, BrandGlyph } from "@/components/app-mobile-nav";
@@ -12,6 +13,7 @@ import { cn, ToastProvider } from "@/components/ui";
 import { getOpenAIModelDefinition } from "@/lib/ai/models";
 import { formatReasoningEffortLabel } from "@/lib/ai/provider-meta";
 import { getDefaultExtractionSettings } from "@/lib/ai/settings";
+import { isUnlockToken, UNLOCK_COOKIE_NAME } from "@/lib/auth";
 
 import "./globals.css";
 
@@ -38,65 +40,86 @@ function formatDefaultModelLabel() {
   return `${modelLabel} · ${formatReasoningEffortLabel(reasoningEffort)}`;
 }
 
-export default function RootLayout({
+/** The unlocked chrome: skip link, mobile top bar and the desktop sidebar rail. */
+function AppShell({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      <a
+        className="fixed top-2 left-2 z-[70] -translate-y-20 rounded-sm bg-surface px-3 py-2 text-body font-medium text-accent-text shadow-overlay focus:translate-y-0"
+        href="#main"
+      >
+        Skip to content
+      </a>
+      <AppMobileNav />
+      <div className="lg:grid lg:min-h-dvh lg:grid-cols-[var(--ui-rail-width)_minmax(0,1fr)]">
+        {/*
+          Desktop sidebar: a thin icon rail that holds its grid column,
+          so pages never reflow. On hover (after a short dwell) or when
+          keyboard focus enters it, the panel widens over the content
+          and shows the labels; it collapses when the pointer or focus
+          leaves. CSS only, keyed on the group/sidebar group.
+        */}
+        <aside className="relative z-40 hidden lg:sticky lg:top-0 lg:block lg:h-dvh">
+          <div className="group/sidebar absolute inset-y-0 left-0 flex w-(--ui-rail-width) flex-col gap-4 overflow-hidden border-r border-border bg-surface-subtle px-2 pt-3 pb-4 transition-[width,box-shadow] delay-75 duration-(--ui-duration) ease-ui hover:w-(--ui-sidebar-width) hover:shadow-overlay hover:delay-150 has-[:focus-visible]:w-(--ui-sidebar-width) has-[:focus-visible]:shadow-overlay has-[:focus-visible]:delay-0">
+            <AppLink
+              className="flex h-10 shrink-0 items-center gap-2.5 rounded-sm px-2 text-text"
+              href="/"
+            >
+              <BrandGlyph />
+              <p className={cn("truncate text-[15px] leading-5 font-semibold", SIDEBAR_REVEAL_CLASS_NAME)}>
+                AI Datasheet Extractor
+              </p>
+            </AppLink>
+            <AppSidebarNav
+              submissionsBadge={
+                <Suspense fallback={null}>
+                  <ReviewQueueBadge />
+                </Suspense>
+              }
+            />
+            <div
+              className={cn(
+                "mt-auto space-y-0.5 px-3 text-caption whitespace-nowrap text-text-muted",
+                SIDEBAR_REVEAL_CLASS_NAME,
+              )}
+            >
+              <p>Default model</p>
+              <p>{formatDefaultModelLabel()}</p>
+            </div>
+          </div>
+        </aside>
+        <main className="min-w-0 focus:outline-none" id="main" tabIndex={-1}>
+          {children}
+        </main>
+      </div>
+    </>
+  );
+}
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Presentation only, not the gate: src/proxy.ts sends every locked visit to
+  // the PIN screen and the route handlers check the cookie again. Without the
+  // unlock cookie the only page that renders is the PIN screen, which gets no
+  // sidebar or top bar, so the review queue count is never queried for it.
+  const unlocked = isUnlockToken((await cookies()).get(UNLOCK_COOKIE_NAME)?.value);
+
   return (
     <html lang="en" className="h-full antialiased">
       <body className="min-h-full bg-page text-text" suppressHydrationWarning>
         <NavigationGuardProvider>
           <ToastProvider>
             <BackgroundTasksProvider>
-              <a
-                className="fixed top-2 left-2 z-[70] -translate-y-20 rounded-sm bg-surface px-3 py-2 text-body font-medium text-accent-text shadow-overlay focus:translate-y-0"
-                href="#main"
-              >
-                Skip to content
-              </a>
-              <AppMobileNav />
-              <div className="lg:grid lg:min-h-dvh lg:grid-cols-[var(--ui-rail-width)_minmax(0,1fr)]">
-                {/*
-                  Desktop sidebar: a thin icon rail that holds its grid column,
-                  so pages never reflow. On hover (after a short dwell) or when
-                  keyboard focus enters it, the panel widens over the content
-                  and shows the labels; it collapses when the pointer or focus
-                  leaves. CSS only, keyed on the group/sidebar group.
-                */}
-                <aside className="relative z-40 hidden lg:sticky lg:top-0 lg:block lg:h-dvh">
-                  <div className="group/sidebar absolute inset-y-0 left-0 flex w-(--ui-rail-width) flex-col gap-4 overflow-hidden border-r border-border bg-surface-subtle px-2 pt-3 pb-4 transition-[width,box-shadow] delay-75 duration-(--ui-duration) ease-ui hover:w-(--ui-sidebar-width) hover:shadow-overlay hover:delay-150 has-[:focus-visible]:w-(--ui-sidebar-width) has-[:focus-visible]:shadow-overlay has-[:focus-visible]:delay-0">
-                    <AppLink
-                      className="flex h-10 shrink-0 items-center gap-2.5 rounded-sm px-2 text-text"
-                      href="/"
-                    >
-                      <BrandGlyph />
-                      <p className={cn("truncate text-[15px] leading-5 font-semibold", SIDEBAR_REVEAL_CLASS_NAME)}>
-                        AI Datasheet Extractor
-                      </p>
-                    </AppLink>
-                    <AppSidebarNav
-                      submissionsBadge={
-                        <Suspense fallback={null}>
-                          <ReviewQueueBadge />
-                        </Suspense>
-                      }
-                    />
-                    <div
-                      className={cn(
-                        "mt-auto space-y-0.5 px-3 text-caption whitespace-nowrap text-text-muted",
-                        SIDEBAR_REVEAL_CLASS_NAME,
-                      )}
-                    >
-                      <p>Default model</p>
-                      <p>{formatDefaultModelLabel()}</p>
-                    </div>
-                  </div>
-                </aside>
+              {unlocked ? (
+                <AppShell>{children}</AppShell>
+              ) : (
                 <main className="min-w-0 focus:outline-none" id="main" tabIndex={-1}>
                   {children}
                 </main>
-              </div>
+              )}
             </BackgroundTasksProvider>
           </ToastProvider>
         </NavigationGuardProvider>

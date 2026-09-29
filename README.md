@@ -19,14 +19,11 @@ R2_BUCKET_NAME=...
 # Optional. Defaults shown. Values must be in the allowlist in src/lib/ai/models.ts.
 OPENAI_MODEL=gpt-5.6-terra
 OPENAI_REASONING_EFFORT=high
-
-# HTTP Basic login as username:password. Optional locally; required on Vercel Production.
-APP_BASIC_AUTH=...
 ```
 
 `MONGODB_URI` must include the target database name. The app uses the native MongoDB driver and stores submissions in the `datasheet_submissions` collection.
 
-`APP_BASIC_AUTH` (`username:password`) gates the whole app with an HTTP Basic login. `src/proxy.ts` checks it on every page and API request, so the browser asks for the login when the app first loads, and the mutating route handlers check it again as the authoritative gate. The gate is opt-in: when the variable is unset the app is open, exactly as before. The production domain is public, so setting it in Vercel (Production and Preview) is strongly recommended.
+The whole app sits behind a shared PIN, `APP_PIN` in `src/lib/auth.ts`. It is hardcoded, with no environment variable. Entering it on the PIN screen (`/unlock`) sets a cookie that lasts 30 days, and changing the PIN signs everyone out. `src/proxy.ts` sends locked visits to the PIN screen and answers locked API calls with a 401, and every route handler checks the cookie again. The repository is public, so the PIN keeps casual visitors and crawlers out but is not a secret.
 
 `OPENAI_MODEL` and `OPENAI_REASONING_EFFORT` set the defaults preselected on the New extraction page. Each request can override them, and the server validates the chosen values against the allowlist. High effort is the default because the September 2026 bake-off showed it matched reviewed values better than medium at the same cost.
 
@@ -46,6 +43,7 @@ Type-check with `npx tsc --noEmit -p tsconfig.json`.
 
 | Route | Page |
 | --- | --- |
+| `/unlock` | The PIN screen. Every other page redirects here until the PIN is entered. |
 | `/` | New extraction: upload a PDF or paste a link, choose a package category and model, and extract. On success it opens the review page. |
 | `/submissions` | Submissions: one row per datasheet (baseline extraction) with its model runs nested, plus search, category, status (all, needs review, reviewed) and sort (recent activity, newest, part number, most pending). |
 | `/submissions/[submissionId]` | The review workspace for a baseline or a re-run. |

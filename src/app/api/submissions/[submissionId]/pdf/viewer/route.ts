@@ -1,3 +1,4 @@
+import { requireAuthorizedRequest } from "@/app/api/_lib/access";
 import { MongoConfigError } from "@/lib/mongodb";
 import { isPdfSourceCancelled } from "@/lib/pdf-source";
 import { R2ConfigError } from "@/lib/r2";
@@ -34,6 +35,12 @@ export async function POST(
   request: Request,
   context: RouteContext<"/api/submissions/[submissionId]/pdf/viewer">,
 ) {
+  const unauthorized = requireAuthorizedRequest(request);
+
+  if (unauthorized) {
+    return unauthorized;
+  }
+
   try {
     const { submissionId } = await context.params;
 
