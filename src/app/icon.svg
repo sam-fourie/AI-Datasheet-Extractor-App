@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- BrandGlyph (Lucide file-search on the accent tile), redrawn on a 32-unit grid so the strokes stay crisp at 16 and 32 px. -->
+  <rect width="32" height="32" rx="8" fill="#0071e3"/>
+  <g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11 25a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h6l6 6v10a2 2 0 0 1-2 2z"/>
+    <path d="M17 7v5a1 1 0 0 0 1 1h5"/>
+    <circle cx="15.5" cy="18.5" r="2.5"/>
+    <path d="m17.3 20.3 1.7 1.7"/>
+  </g>
+</svg>

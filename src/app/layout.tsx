@@ -22,6 +22,12 @@ export const metadata: Metadata = {
   },
   description:
     "Extract package data from component datasheets with AI, then verify every value against the datasheet.",
+  // No title here on purpose: og:title falls back to each page's own title,
+  // and the Twitter card copies Open Graph. The image is ./opengraph-image.png.
+  openGraph: {
+    siteName: "AI Datasheet Extractor",
+    type: "website",
+  },
 };
 
 /** "GPT-5.6 Terra · High": the full model name, since the footer has room. */

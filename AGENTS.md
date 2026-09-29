@@ -55,6 +55,11 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - The desktop sidebar is a 56 px icon rail that keeps its grid column, so pages never reflow. The panel inside it widens to 240 px over the content on hover (after a short dwell) or when keyboard focus enters, then collapses. It is CSS only, keyed on the `group/sidebar` group in `src/app/layout.tsx`; shared reveal classes live in `src/components/app-sidebar-classes.ts`, a plain module because values exported from a `"use client"` module reach Server Components as client references. Keep item icons at the same x position in both states.
 - Page widths: New extraction uses `AppPageLayout width="narrow"`; Submissions and Reports use `width="full"` with the standard page padding; the review workspace manages its own layout.
 - The root layout mounts `NavigationGuardProvider`, then `ToastProvider`, then `BackgroundTasksProvider`.
+- Brand: `BrandGlyph` in `app-mobile-nav.tsx` is the mark, a white Lucide `FileSearch` on the `accent` tile. The static files in `src/app` are exports of it, so change them together:
+  - `icon.svg` redraws it on a 32-unit grid so the strokes stay crisp at 16 and 32 px. `favicon.ico` holds 16, 32 and 48 px renders of `icon.svg`.
+  - `apple-icon.png` is 180 px and full bleed, because iOS applies its own mask.
+  - `opengraph-image.png` (1200 × 630, with its `.alt.txt`) is the link preview for every page. Its text is set in Inter, the open-licence stand-in for SF Pro.
+  - Pages must not set `openGraph`, because that replaces the root layout's object. og:title already falls back to each page's title.
 
 ## Navigation
 
