@@ -1,4 +1,5 @@
 import type { MeasurementFieldStatus } from "@/lib/package-categories";
+import { checkExtraction } from "@/lib/submissions/extraction-checks";
 import { NOT_FOUND_VALUE } from "@/lib/submissions/extraction-snapshot";
 import type {
   AgreementOutcome,
@@ -883,6 +884,9 @@ export function applyCorrection(
 
 export type AttentionReason =
   | "differsFromBaseline"
+  | "inconsistentMeasurement"
+  | "pinCountMismatch"
+  | "groupedPins"
   | "lowConfidence"
   | "aiUnsure"
   | "notFound"
@@ -892,9 +896,16 @@ export type AttentionReason =
   | "needsReview"
   | "noEvidence";
 
-/** Reasons in display order; the first one is shown on the row. */
+/**
+ * Reasons in display order; the first one is shown on the row. The checks
+ * from extraction-checks.ts (inconsistentMeasurement, pinCountMismatch,
+ * groupedPins) come before the AI's own flags because they are certain.
+ */
 export const ATTENTION_REASONS: readonly AttentionReason[] = [
   "differsFromBaseline",
+  "inconsistentMeasurement",
+  "pinCountMismatch",
+  "groupedPins",
   "lowConfidence",
   "aiUnsure",
   "notFound",
@@ -909,11 +920,14 @@ const ATTENTION_REASON_LABELS: Record<AttentionReason, string> = {
   aiUnsure: "AI unsure",
   differsFromBaseline: "Differs from baseline",
   duplicatePinNumber: "Pin number appears more than once",
+  groupedPins: "Several pins in one row",
+  inconsistentMeasurement: "Can't be right with the other measurements",
   lowConfidence: "Low confidence",
   mediumConfidence: "Medium confidence",
   needsReview: "Extraction flagged by the AI",
   noEvidence: "No evidence page",
   notFound: "Not found by the AI",
+  pinCountMismatch: "Pin list doesn't match the package",
   runsDisagree: "Other model runs differ",
 };
 
@@ -1007,12 +1021,18 @@ export function classifyRowAttention(
     }
   };
 
+  const checks = checkExtraction(extraction);
+
   switch (ref.kind) {
     case "package": {
       addConfidence(extraction.packageSelection.confidence);
 
       if (extraction.review.needsReview) {
         reasons.add("needsReview");
+      }
+
+      if (checks.pinCountMismatch) {
+        reasons.add("pinCountMismatch");
       }
 
       break;
@@ -1025,6 +1045,10 @@ export function classifyRowAttention(
       }
 
       addConfidence(field.confidence);
+
+      if (checks.inconsistentFields.has(field.field.toLowerCase())) {
+        reasons.add("inconsistentMeasurement");
+      }
 
       if (field.status === "Needs review") {
         reasons.add("aiUnsure");
@@ -1050,6 +1074,10 @@ export function classifyRowAttention(
       }
 
       addConfidence(pin.confidence);
+
+      if (checks.groupedPinIndexes.has(ref.pinIndex)) {
+        reasons.add("groupedPins");
+      }
 
       const pinNumber = normalizePinNumber(pin.pinNumber);
 

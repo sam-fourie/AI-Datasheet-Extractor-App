@@ -76,7 +76,8 @@ function makeExtraction(overrides: Partial<ExtractionSnapshot> = {}): Extraction
     packageSelection: {
       alternatives: ["PS (SO, 8)"],
       confidence: "high",
-      selectedPackage: "D (SOIC, 8)",
+      // No pin count in the text, so the three sample pins don't trip the pin-count check.
+      selectedPackage: "D (SOIC)",
     },
     pinRows: [
       { confidence: "high", evidencePages: [3], pinName: "GND", pinNumber: "1" },
@@ -205,7 +206,7 @@ describe("corrections", () => {
     expect(getCorrectionDefaults(extraction, review, packageRef)).toEqual({
       kind: "package",
       note: "",
-      selectedPackage: "D (SOIC, 8)",
+      selectedPackage: "D (SOIC)",
     });
   });
 

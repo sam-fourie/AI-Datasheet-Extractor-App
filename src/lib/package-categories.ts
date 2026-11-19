@@ -577,6 +577,11 @@ export type ProviderMeta = {
   estimatedCostUsd?: number;
   latencyMs?: number;
   model: string;
+  /**
+   * The extraction prompt and rules ("v1", "v2"), from EXTRACTION_PROMPT_VERSIONS.
+   * Missing on extractions from before November 2026, which all used v1.
+   */
+  promptVersion?: string;
   provider: string;
   reasoningEffort?: string;
   responseId?: string;

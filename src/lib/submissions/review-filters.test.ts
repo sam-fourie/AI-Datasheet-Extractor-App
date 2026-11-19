@@ -33,7 +33,8 @@ function makeExtraction(overrides: Partial<ExtractionSnapshot> = {}): Extraction
       // Not found.
       { confidence: "low", evidencePages: [], field: "Stand Off", status: "Not found", value: NOT_FOUND_VALUE },
     ],
-    packageSelection: { alternatives: [], confidence: "high", selectedPackage: "D (SOIC, 8)" },
+    // No pin count in the text, so the sample pins don't trip the pin-count check.
+    packageSelection: { alternatives: [], confidence: "high", selectedPackage: "D (SOIC)" },
     pinRows: [
       { confidence: "high", evidencePages: [3], pinName: "GND", pinNumber: "1" },
       { confidence: "high", evidencePages: [3], pinName: "TRIG", pinNumber: "2" },

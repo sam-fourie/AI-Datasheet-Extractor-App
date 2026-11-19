@@ -1,3 +1,4 @@
+import type { ExtractionPromptVersion } from "@/lib/ai/extraction-rules";
 import type { OpenAIModelId, OpenAIReasoningEffort } from "@/lib/ai/models";
 import {
   type ConfidenceLevel,
@@ -16,6 +17,8 @@ export type ExtractionInput = {
   partNumber: string;
   pdfBytes: Uint8Array;
   pdfFileName: string;
+  /** Which prompt and post-processing to use. Defaults to DEFAULT_EXTRACTION_PROMPT_VERSION. */
+  promptVersion?: ExtractionPromptVersion;
   reasoningEffort: OpenAIReasoningEffort;
   requestedFields: readonly string[];
   /** Caller cancellation (e.g. request.signal). Aborting throws ExtractionCancelledError. */

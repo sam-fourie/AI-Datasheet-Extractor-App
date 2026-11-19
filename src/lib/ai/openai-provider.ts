@@ -14,6 +14,13 @@ import {
   ExtractionCancelledError,
   ExtractionTimeoutError,
 } from "@/lib/ai/errors";
+import { applyExtractionRules } from "@/lib/ai/extraction-postprocess";
+import {
+  buildRulebookPrompt,
+  DEFAULT_EXTRACTION_PROMPT_VERSION,
+  RULEBOOK_DEVELOPER_MESSAGE,
+  type ExtractionPromptVersion,
+} from "@/lib/ai/extraction-rules";
 import {
   estimateExtractionCostUsd,
   EXTRACTION_REQUEST_TIMEOUT_MS,
@@ -129,8 +136,9 @@ function buildReviewSummary(
   parsed: ParsedExtraction,
   measurements: ExtractionMeasurement[],
   pins: ExtractionPin[],
+  rules: { needsReview: boolean; notes: string[] } = { needsReview: false, notes: [] },
 ): ReviewSummary {
-  const derivedNotes = new Set(parsed.review.notes);
+  const derivedNotes = new Set([...parsed.review.notes, ...rules.notes]);
 
   if (measurements.some((measurement) => measurement.status === "needs_review")) {
     derivedNotes.add("One or more measurements need manual review.");
@@ -147,6 +155,7 @@ function buildReviewSummary(
   return {
     needsReview:
       parsed.review.needsReview ||
+      rules.needsReview ||
       measurements.some((measurement) => measurement.status === "needs_review") ||
       pins.some((pin) => pin.confidence === "low") ||
       parsed.packageSelection.confidence === "low",
@@ -154,7 +163,11 @@ function buildReviewSummary(
   };
 }
 
-function buildPrompt(input: ExtractionInput) {
+const V1_DEVELOPER_MESSAGE =
+  "You extract datasheet measurements and pin maps into a strict schema. Never invent values. Use not_found or needs_review instead of guessing silently.";
+
+/** The original prompt, kept as v1 so the scoring script can compare against it. */
+function buildPromptV1(input: ExtractionInput) {
   return [
     "Extract semiconductor package measurements and pin mappings from the attached datasheet PDF.",
     `Part number: ${input.partNumber}`,
@@ -170,6 +183,18 @@ function buildPrompt(input: ExtractionInput) {
     "- Choose the best matching package for the part number and package category, but set needsReview when confidence is weak.",
     "- Evidence pages must be 1-based physical page indexes of the PDF file, not printed page labels.",
   ].join("\n");
+}
+
+function buildMessages(input: ExtractionInput, version: ExtractionPromptVersion) {
+  return version === "v2"
+    ? {
+        developer: RULEBOOK_DEVELOPER_MESSAGE,
+        prompt: buildRulebookPrompt(input),
+      }
+    : {
+        developer: V1_DEVELOPER_MESSAGE,
+        prompt: buildPromptV1(input),
+      };
 }
 
 function buildPackageSelection(
@@ -202,6 +227,7 @@ function buildProviderMeta(
   input: ExtractionInput,
   response: OpenAI.Responses.Response,
   latencyMs: number,
+  promptVersion: ExtractionPromptVersion,
 ): ProviderMeta {
   const usage = buildProviderUsage(response.usage);
   const estimatedCostUsd = usage ? estimateExtractionCostUsd(input.model, usage) : null;
@@ -209,6 +235,7 @@ function buildProviderMeta(
   return {
     latencyMs: Math.round(latencyMs),
     model: input.model,
+    promptVersion,
     provider: "openai",
     reasoningEffort: input.reasoningEffort,
     responseId: response.id,
@@ -243,6 +270,8 @@ async function runWithDeadline<T>(
 
 export class OpenAIExtractionProvider implements AiProvider {
   async extractDatasheet(input: ExtractionInput): Promise<ExtractionResult> {
+    const promptVersion = input.promptVersion ?? DEFAULT_EXTRACTION_PROMPT_VERSION;
+    const messages = buildMessages(input, promptVersion);
     const base64Pdf = Buffer.from(input.pdfBytes).toString("base64");
     const deadlineSignal = AbortSignal.timeout(EXTRACTION_REQUEST_TIMEOUT_MS);
     const requestSignal = input.signal
@@ -259,15 +288,14 @@ export class OpenAIExtractionProvider implements AiProvider {
           input: [
             {
               role: "developer",
-              content:
-                "You extract datasheet measurements and pin maps into a strict schema. Never invent values. Use not_found or needs_review instead of guessing silently.",
+              content: messages.developer,
             },
             {
               role: "user",
               content: [
                 {
                   type: "input_text",
-                  text: buildPrompt(input),
+                  text: messages.prompt,
                 },
                 {
                   type: "input_file",
@@ -295,16 +323,32 @@ export class OpenAIExtractionProvider implements AiProvider {
       throw new Error("OpenAI returned an empty extraction payload.");
     }
 
-    const measurements = normalizeMeasurements(input.requestedFields, parsed.measurements);
-    const pins = normalizePins(parsed.pins);
     const packageSelection = buildPackageSelection(parsed.packageSelection);
-    const review = buildReviewSummary(parsed, measurements, pins);
+    let measurements = normalizeMeasurements(input.requestedFields, parsed.measurements);
+    let pins = normalizePins(parsed.pins);
+    let rules = { needsReview: false, notes: [] as string[] };
+
+    if (promptVersion === "v2") {
+      const outcome = applyExtractionRules({
+        aiNotes: parsed.review.notes,
+        measurements,
+        packageCategory: input.packageCategory,
+        pins,
+        selectedPackage: packageSelection.selectedPackage,
+      });
+
+      measurements = outcome.measurements;
+      pins = outcome.pins;
+      rules = { needsReview: outcome.needsReview, notes: outcome.notes };
+    }
+
+    const review = buildReviewSummary(parsed, measurements, pins, rules);
 
     return {
       measurements,
       packageSelection,
       pins,
-      providerMeta: buildProviderMeta(input, response, latencyMs),
+      providerMeta: buildProviderMeta(input, response, latencyMs, promptVersion),
       review,
     };
   }
