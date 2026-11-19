@@ -22,9 +22,17 @@ import type {
  */
 
 export type PdfViewerSubmission = {
-  intake: Pick<SubmissionIntakeSnapshot, "sourceMeta">;
+  intake: Pick<SubmissionIntakeSnapshot, "drawing" | "sourceMeta">;
   submissionId: string;
 };
+
+/** Which of a submission's PDFs: the datasheet, or the package drawing sent with it. */
+export type PdfDocumentKind = "datasheet" | "drawing";
+
+/** Reads `?document=drawing`; anything else is the datasheet. */
+export function parsePdfDocumentKind(value: string | null): PdfDocumentKind {
+  return value === "drawing" ? "drawing" : "datasheet";
+}
 
 export type PdfViewerReady = Extract<PdfViewerState, { status: "ready" }>;
 export type PdfViewerUnavailable = Extract<PdfViewerState, { status: "unavailable" }>;
@@ -261,6 +269,36 @@ export async function ensurePdfViewerReady(
   }
 
   const { location } = resolution;
+  const signed = options.download
+    ? await createObjectAttachmentUrl(location.objectKey, location.fileName)
+    : await createObjectViewerUrl(location.objectKey, location.fileName);
+
+  return toReadyState(location, signed);
+}
+
+/**
+ * The package drawing's viewer state: always kept in R2, so it is ready, or
+ * unavailable when the submission has no drawing. `download` signs an
+ * attachment URL instead.
+ */
+export async function resolveDrawingViewer(
+  submission: PdfViewerSubmission,
+  options: { download?: boolean } = {},
+): Promise<PdfViewerReady | PdfViewerUnavailable> {
+  const drawing = submission.intake.drawing;
+
+  if (!drawing) {
+    return { reason: "not-retained", status: "unavailable" };
+  }
+
+  const location: PdfObjectLocation = {
+    cachedAt: null,
+    fileName: drawing.fileName,
+    objectKey: drawing.objectKey,
+    revision: "extracted",
+    sizeBytes: drawing.sizeBytes,
+    source: "upload",
+  };
   const signed = options.download
     ? await createObjectAttachmentUrl(location.objectKey, location.fileName)
     : await createObjectViewerUrl(location.objectKey, location.fileName);

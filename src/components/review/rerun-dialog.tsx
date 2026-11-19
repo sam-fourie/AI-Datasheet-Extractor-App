@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { DrawingField } from "@/components/drawing-field";
 import { Badge, Button, Callout, Dialog, SegmentedControl, cn } from "@/components/ui";
 import {
   formatModelPricing,
@@ -11,6 +12,7 @@ import {
   type OpenAIModelRole,
   type OpenAIReasoningEffort,
 } from "@/lib/ai/models";
+import type { DrawingInput } from "@/lib/drawing-upload";
 import type { SubmissionModelRun } from "@/lib/submissions/types";
 
 import type { RerunSettings } from "./review-services";
@@ -29,8 +31,13 @@ export type RerunDialogProps = {
   baselineReviewed: boolean;
   defaultModel: string;
   defaultReasoningEffort: string;
+  /** The package drawing this submission was run with, which a run without a new one reuses. */
+  drawingFileName: string | null;
+  /** True when the AI's notes say the package dimensions are in a separate document. */
+  drawingSuggested: boolean;
   onClose: () => void;
-  onStart: (settings: RerunSettings) => void;
+  /** `drawing` is a new package drawing for this run, or null. */
+  onStart: (settings: RerunSettings, drawing: DrawingInput | null) => void;
   open: boolean;
   partNumber: string;
   runs: readonly SubmissionModelRun[];
@@ -58,6 +65,8 @@ export function RerunDialog({
   baselineReviewed,
   defaultModel,
   defaultReasoningEffort,
+  drawingFileName,
+  drawingSuggested,
   onClose,
   onStart,
   open,
@@ -70,6 +79,7 @@ export function RerunDialog({
   const [effort, setEffort] = useState<OpenAIReasoningEffort>(() =>
     pickEffort(initialModel, defaultReasoningEffort),
   );
+  const [drawing, setDrawing] = useState<DrawingInput | null>(null);
   const definition = getOpenAIModelDefinition(model) ?? OPENAI_MODELS[0];
   const done = indexRunsByModelEffort(runs);
 
@@ -86,7 +96,7 @@ export function RerunDialog({
           <Button onClick={onClose} variant="secondary">
             Cancel
           </Button>
-          <Button onClick={() => onStart({ model, reasoningEffort: effort })} variant="primary">
+          <Button onClick={() => onStart({ model, reasoningEffort: effort }, drawing)} variant="primary">
             Start run
           </Button>
         </>
@@ -159,6 +169,17 @@ export function RerunDialog({
             value={effort}
           />
         </div>
+
+        <DrawingField
+          hint={
+            drawingFileName
+              ? `Optional. Leave it empty to use ${drawingFileName} again.`
+              : drawingSuggested
+                ? "The AI's notes say the package dimensions are in a separate document. Add that drawing to fill them in."
+                : undefined
+          }
+          onChange={setDrawing}
+        />
 
         {baselineReviewed ? null : (
           <Callout tone="warning">

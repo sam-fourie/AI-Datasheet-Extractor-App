@@ -2,13 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
-import { Button, Card, Spinner } from "@/components/ui";
+import { DrawingField } from "@/components/drawing-field";
+import { Button, Card, Disclosure, Spinner } from "@/components/ui";
 import {
   getOpenAIModelDefinition,
   REASONING_EFFORT_LABELS,
   type OpenAIModelId,
   type OpenAIReasoningEffort,
 } from "@/lib/ai/models";
+import type { DrawingInput } from "@/lib/drawing-upload";
 import { PACKAGE_CATEGORY_FIELDS, type PackageCategory } from "@/lib/package-categories";
 import { getUrlHost, normalizePartNumberKey } from "@/lib/submissions/source";
 import type { DatasheetIndexEntry } from "@/lib/submissions/types";
@@ -74,6 +76,7 @@ export function NewExtractionForm({
 }: NewExtractionFormProps) {
   const [file, setFile] = useState<File | null>(null);
   const [url, setUrl] = useState("");
+  const [drawing, setDrawing] = useState<DrawingInput | null>(null);
   const [lastEdited, setLastEdited] = useState<SourceKind | null>(null);
   const [partNumber, setPartNumber] = useState("");
   const [category, setCategory] = useState<PackageCategory | null>(null);
@@ -201,6 +204,7 @@ export function NewExtractionForm({
     }
 
     const input: ExtractionRequestInput = {
+      drawing,
       model,
       packageCategory: category,
       partNumber: trimmedPartNumber,
@@ -386,6 +390,12 @@ export function NewExtractionForm({
             recentCategories={recentCategories}
             value={category}
           />
+
+          <Disclosure summary={drawing ? "Package drawing added" : "Add a package drawing (optional)"}>
+            <div className="pt-3">
+              <DrawingField label="Package drawing" onChange={setDrawing} />
+            </div>
+          </Disclosure>
 
           <div className="border-t border-border-subtle pt-5">
             <ModelSettings

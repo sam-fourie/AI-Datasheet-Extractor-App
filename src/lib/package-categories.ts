@@ -539,8 +539,13 @@ export type ConfidenceLevel = "high" | "medium" | "low";
 
 export type MeasurementFieldStatus = "Extracted" | "Needs review" | "Not found";
 
+/** Which PDF a row's evidence pages are in. Absent means the datasheet. */
+export type EvidenceDocument = "datasheet" | "drawing";
+
 export type MeasurementFieldRow = {
   confidence?: ConfidenceLevel;
+  /** "drawing" when the evidence pages are in the package drawing. */
+  evidenceDocument?: "drawing";
   evidencePages?: number[];
   field: string;
   status: MeasurementFieldStatus;
@@ -549,6 +554,8 @@ export type MeasurementFieldRow = {
 
 export type PinRow = {
   confidence?: ConfidenceLevel;
+  /** "drawing" when the evidence pages are in the package drawing. */
+  evidenceDocument?: "drawing";
   evidencePages?: number[];
   pinName: string;
   pinNumber: string;

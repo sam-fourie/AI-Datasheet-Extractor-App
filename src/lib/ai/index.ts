@@ -12,6 +12,8 @@ import { OpenAIExtractionProvider } from "./openai-provider";
 export type ExtractionMeasurementStatus = "found" | "needs_review" | "not_found";
 
 export type ExtractionInput = {
+  /** The package drawing, sent to the model as a second PDF after the datasheet. */
+  drawing?: { pdfBytes: Uint8Array; pdfFileName: string };
   model: OpenAIModelId;
   packageCategory: PackageCategory;
   partNumber: string;
@@ -28,6 +30,8 @@ export type ExtractionInput = {
 
 export type ExtractionMeasurement = {
   confidence: ConfidenceLevel;
+  /** "drawing" when the evidence pages are in the package drawing. */
+  evidenceDocument?: "drawing";
   evidencePages: number[];
   field: string;
   status: ExtractionMeasurementStatus;
@@ -36,6 +40,8 @@ export type ExtractionMeasurement = {
 
 export type ExtractionPin = {
   confidence: ConfidenceLevel;
+  /** "drawing" when the evidence pages are in the package drawing. */
+  evidenceDocument?: "drawing";
   evidencePages: number[];
   pinName: string;
   pinNumber: string;

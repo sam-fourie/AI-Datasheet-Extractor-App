@@ -20,6 +20,7 @@ export function toMeasurementFieldRow(
 
   return {
     confidence: measurement.confidence,
+    ...(measurement.evidenceDocument === "drawing" ? { evidenceDocument: "drawing" as const } : {}),
     evidencePages: measurement.evidencePages,
     field: measurement.field,
     status,
@@ -30,6 +31,7 @@ export function toMeasurementFieldRow(
 export function toPinRow(pin: ExtractionPin): PinRow {
   return {
     confidence: pin.confidence,
+    ...(pin.evidenceDocument === "drawing" ? { evidenceDocument: "drawing" as const } : {}),
     evidencePages: pin.evidencePages,
     pinName: pin.pinName,
     pinNumber: pin.pinNumber,

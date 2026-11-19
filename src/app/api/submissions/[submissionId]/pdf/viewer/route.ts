@@ -4,6 +4,8 @@ import { isPdfSourceCancelled } from "@/lib/pdf-source";
 import { R2ConfigError } from "@/lib/r2";
 import {
   ensurePdfViewerReady,
+  parsePdfDocumentKind,
+  resolveDrawingViewer,
   type EnsuredPdfViewerState,
   type PdfViewerRouteError,
 } from "@/lib/submissions/pdf-viewer";
@@ -23,6 +25,8 @@ function errorResponse(body: PdfViewerRouteError, status: number) {
 }
 
 /**
+ * `?document=drawing` signs the package drawing instead of the datasheet.
+ *
  * Returns a signed viewer URL for the submission's PDF (JSON only; bytes never
  * pass through). POST because an uncached URL source is fetched from the
  * vendor and written to the R2 cache on first use.
@@ -60,7 +64,11 @@ export async function POST(
       );
     }
 
-    const state = await ensurePdfViewerReady(submission, { signal: request.signal });
+    const document = parsePdfDocumentKind(new URL(request.url).searchParams.get("document"));
+    const state =
+      document === "drawing"
+        ? await resolveDrawingViewer(submission)
+        : await ensurePdfViewerReady(submission, { signal: request.signal });
     const status =
       state.status === "ready" ? 200 : state.status === "unavailable" ? 404 : 502;
 

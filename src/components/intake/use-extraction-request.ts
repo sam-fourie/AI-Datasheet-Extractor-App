@@ -6,6 +6,7 @@ import { useBackgroundTasks } from "@/components/background-tasks-provider";
 import { useNavigationGuardControls } from "@/components/navigation-blocker-provider";
 import { useToast } from "@/components/ui";
 import type {
+  DrawingPayload,
   ExtractionErrorCode,
   ExtractionErrorResponse,
   ExtractionRequestPayload,
@@ -13,6 +14,7 @@ import type {
   UploadUrlRequestPayload,
   UploadUrlResponse,
 } from "@/lib/extractions";
+import { prepareDrawingPayload } from "@/lib/drawing-upload";
 import { PDF_MIME_TYPE } from "@/lib/pdf";
 import type { SubmissionDetail } from "@/lib/submissions/types";
 
@@ -313,6 +315,7 @@ export function useExtractionRequest() {
       const run = async (signal: AbortSignal): Promise<SubmissionDetail> => {
         let usedPayload: UploadedPdfPayload | null = kept?.payload ?? null;
         let body: ExtractionRequestPayload;
+        let drawing: DrawingPayload | undefined;
 
         if (source.kind === "upload") {
           if (!usedPayload) {
@@ -359,11 +362,26 @@ export function useExtractionRequest() {
           };
         }
 
+        if (input.drawing) {
+          try {
+            drawing = await prepareDrawingPayload(input.drawing, signal);
+          } catch (error) {
+            if (isAbortError(error) || signal.aborted) {
+              throw new CancelledError();
+            }
+
+            throw new RequestFailure({
+              code: "upload-failed",
+              message: error instanceof Error ? error.message : "The package drawing couldn't be uploaded.",
+            });
+          }
+        }
+
         let response: Response;
 
         try {
           response = await fetch("/api/extractions", {
-            body: JSON.stringify(body),
+            body: JSON.stringify(drawing ? { ...body, drawing } : body),
             headers: { "content-type": "application/json" },
             method: "POST",
             signal,

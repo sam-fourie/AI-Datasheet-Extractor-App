@@ -2,7 +2,11 @@ import { requireAuthorizedRequest } from "@/app/api/_lib/access";
 import { MongoConfigError } from "@/lib/mongodb";
 import { isPdfSourceCancelled } from "@/lib/pdf-source";
 import { R2ConfigError } from "@/lib/r2";
-import { ensurePdfViewerReady } from "@/lib/submissions/pdf-viewer";
+import {
+  ensurePdfViewerReady,
+  parsePdfDocumentKind,
+  resolveDrawingViewer,
+} from "@/lib/submissions/pdf-viewer";
 import {
   getSubmissionIntake,
   isValidSubmissionId,
@@ -68,7 +72,8 @@ function parsePage(value: string | null) {
 
 /**
  * 307s to a signed R2 URL for the submission's PDF, caching URL sources lazily
- * on first use. `?page=N` appends `#page=N`; `?download=1` signs an attachment
+ * on first use. `?document=drawing` serves the package drawing instead of the
+ * datasheet. `?page=N` appends `#page=N`; `?download=1` signs an attachment
  * URL with a 5-minute TTL instead of the inline viewer URL. PDF bytes never
  * pass through this response.
  */
@@ -98,7 +103,11 @@ export async function GET(
       throw new RouteError("Submission not found.", 404, "not-found");
     }
 
-    const state = await ensurePdfViewerReady(submission, { download, signal: request.signal });
+    const document = parsePdfDocumentKind(searchParams.get("document"));
+    const state =
+      document === "drawing"
+        ? await resolveDrawingViewer(submission, { download })
+        : await ensurePdfViewerReady(submission, { download, signal: request.signal });
 
     if (state.status === "unavailable") {
       throw new RouteError(

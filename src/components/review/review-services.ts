@@ -1,3 +1,5 @@
+import { prepareDrawingPayload, type DrawingInput } from "@/lib/drawing-upload";
+import type { EvidenceDocument } from "@/lib/package-categories";
 import type {
   PdfViewerState,
   SubmissionDetail,
@@ -31,19 +33,25 @@ export type RerunSettings = { model: string; reasoningEffort: string };
 export type ReviewWorkspaceServices = {
   /** Whether "Delete submission…" is offered (false in the preview). */
   canDelete: boolean;
-  /** POST /pdf/viewer: a fresh signed URL, caching URL sources on first use. */
-  ensurePdfViewer: (submissionId: string) => Promise<PdfViewerResult>;
+  /** POST /pdf/viewer: a fresh signed URL, caching URL sources on first use. `document` picks the package drawing. */
+  ensurePdfViewer: (submissionId: string, document?: EvidenceDocument) => Promise<PdfViewerResult>;
   /** Review page of a submission (the preview maps fixture ids to preview URLs). */
   hrefFor: (submissionId: string) => string;
   /** GET /pdf?download=1 (uploads): an attachment copy. Null when not available. */
   pdfDownloadHref: (submissionId: string, available: boolean) => string | null;
   /** GET /pdf in a new tab: the signed copy, at a page. Null when not available. */
-  pdfTabHref: (submissionId: string, page: number | null, available: boolean) => string | null;
-  /** POST /rerun. Resolves with the new run. */
+  pdfTabHref: (
+    submissionId: string,
+    page: number | null,
+    available: boolean,
+    document?: EvidenceDocument,
+  ) => string | null;
+  /** POST /rerun, uploading the package drawing first when one is given. Resolves with the new run. */
   rerun: (
     submissionId: string,
     settings: RerunSettings,
     signal: AbortSignal,
+    drawing?: DrawingInput | null,
   ) => Promise<SubmissionDetail>;
   /** PATCH /review with the unchanged full-overlay payload. Resolves with the saved submission. */
   saveReview: (submissionId: string, review: SubmissionHumanReview) => Promise<SubmissionDetail>;
@@ -81,11 +89,12 @@ function submissionPath(submissionId: string) {
 export const liveReviewServices: ReviewWorkspaceServices = {
   canDelete: true,
 
-  async ensurePdfViewer(submissionId) {
+  async ensurePdfViewer(submissionId, document) {
     let response: Response;
+    const query = document === "drawing" ? "?document=drawing" : "";
 
     try {
-      response = await fetch(`${submissionPath(submissionId)}/pdf/viewer`, { method: "POST" });
+      response = await fetch(`${submissionPath(submissionId)}/pdf/viewer${query}`, { method: "POST" });
     } catch {
       return { message: "Check your connection and try again.", originalUrl: null, status: "error" };
     }
@@ -115,19 +124,30 @@ export const liveReviewServices: ReviewWorkspaceServices = {
     return available ? `${submissionPath(submissionId)}/pdf?download=1` : null;
   },
 
-  pdfTabHref(submissionId, page, available) {
+  pdfTabHref(submissionId, page, available, document) {
     if (!available) {
       return null;
     }
 
-    const query = page && page > 0 ? `?page=${page}` : "";
+    const params = new URLSearchParams();
+
+    if (document === "drawing") {
+      params.set("document", "drawing");
+    }
+
+    if (page && page > 0) {
+      params.set("page", String(page));
+    }
+
+    const query = params.size > 0 ? `?${params.toString()}` : "";
 
     return `${submissionPath(submissionId)}/pdf${query}`;
   },
 
-  async rerun(submissionId, settings, signal) {
+  async rerun(submissionId, settings, signal, drawing) {
+    const drawingPayload = drawing ? await prepareDrawingPayload(drawing, signal) : null;
     const response = await fetch(`${submissionPath(submissionId)}/rerun`, {
-      body: JSON.stringify(settings),
+      body: JSON.stringify(drawingPayload ? { ...settings, drawing: drawingPayload } : settings),
       headers: { "content-type": "application/json" },
       method: "POST",
       signal,

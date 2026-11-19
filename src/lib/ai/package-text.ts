@@ -188,3 +188,11 @@ export function listPinNumbers(pinNumber: string): string[] {
 
   return numbers.length > 0 ? numbers : [pinNumber.trim()];
 }
+
+const SEPARATE_DRAWING_NOTE =
+  /\b(?:outline|package (?:drawing|outline|document)|mechanical drawing|land pattern)\b[^.]*\b(?:separate|not (?:included|attached|provided|in (?:this|the) (?:pdf|datasheet))|refer(?:s|red)? to|see)\b|\b(?:separate|external|referenced)\b[^.]*\b(?:outline|drawing)\b|\b(?:21-\d{6}|98A[A-Z]{2}\d{5}[A-Z]?)\b|\bno (?:package )?(?:mechanical )?(?:dimensions|drawing)\b/i;
+
+/** Whether the AI's notes say the package dimensions are in a separate document, such as "outline 21-100765". */
+export function mentionsSeparateDrawing(notes: readonly string[]) {
+  return notes.some((note) => SEPARATE_DRAWING_NOTE.test(note));
+}

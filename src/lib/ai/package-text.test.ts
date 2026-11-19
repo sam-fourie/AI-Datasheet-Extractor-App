@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   describeCategoryMismatch,
+  mentionsSeparateDrawing,
   detectPackageCodeFamilies,
   isExposedPadPin,
   listPinNumbers,
@@ -108,5 +109,23 @@ describe("listPinNumbers", () => {
     expect(listPinNumbers("7")).toEqual(["7"]);
     expect(listPinNumbers("A1")).toEqual(["A1"]);
     expect(listPinNumbers("EP")).toEqual(["EP"]);
+  });
+});
+
+describe("mentionsSeparateDrawing", () => {
+  it.each([
+    "The package outline drawing (outline 21-100765) is referenced but is not included in the supplied PDF.",
+    "The datasheet directs detailed package dimensions to external drawing 98ASS23177W.",
+    "The PDF contains no package mechanical dimensions.",
+  ])("spots %s", (note) => {
+    expect(mentionsSeparateDrawing([note])).toBe(true);
+  });
+
+  it.each([
+    "Package drawing D0008A on page 30 was used for all body dimensions.",
+    "The datasheet states package dimensions as 5mm × 7mm.",
+    "Pins per side were counted from the PL84 package drawing.",
+  ])("leaves %s alone", (note) => {
+    expect(mentionsSeparateDrawing([note])).toBe(false);
   });
 });

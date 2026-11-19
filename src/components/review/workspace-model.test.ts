@@ -11,7 +11,9 @@ import {
 } from "@/lib/submissions/review";
 import type { ExtractionSnapshot, SubmissionHumanReview } from "@/lib/submissions/types";
 
+import { largeBaselineFixture } from "./fixtures";
 import {
+  getRowEvidenceDocument,
   listBulkConfirmChanges,
   refreshCompletion,
   revertBulkConfirm,
@@ -118,5 +120,16 @@ describe("refreshCompletion", () => {
     const saved = decide(createDefaultSubmissionReview(makeExtraction()), allRefs);
 
     expect(refreshCompletion(null, saved)).toBeNull();
+  });
+});
+
+describe("getRowEvidenceDocument", () => {
+  it("opens rows whose evidence is in the package drawing on the drawing", () => {
+    const extraction = largeBaselineFixture.extraction;
+
+    expect(getRowEvidenceDocument(extraction, { field: "Height", kind: "measurement" })).toBe("drawing");
+    expect(getRowEvidenceDocument(extraction, { field: "Body Length", kind: "measurement" })).toBe("datasheet");
+    expect(getRowEvidenceDocument(extraction, { kind: "pin", pinIndex: 0 })).toBe("datasheet");
+    expect(getRowEvidenceDocument(extraction, { kind: "package" })).toBe("datasheet");
   });
 });

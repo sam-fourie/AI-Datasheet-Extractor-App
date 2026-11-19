@@ -82,7 +82,11 @@ import { AgreementSummary } from "./agreement-summary";
 import { AiNotesCallout } from "./ai-notes-callout";
 import { ArrivalBanner } from "./arrival-banner";
 import { CompletionCard } from "./completion-card";
-import { DatasheetPane, type PdfContext } from "./datasheet-pane";
+import { mentionsSeparateDrawing } from "@/lib/ai/package-text";
+import type { DrawingInput } from "@/lib/drawing-upload";
+import type { EvidenceDocument } from "@/lib/package-categories";
+
+import { DatasheetPane, type PdfContext, type PdfDocumentSwitch } from "./datasheet-pane";
 import { DatasheetSheet } from "./datasheet-sheet";
 import { SubmissionDetails } from "./details-popover";
 import { LocalDate } from "./local-date";
@@ -140,6 +144,7 @@ import {
   formatModelDotEffort,
   formatModelName,
   formatModelWithEffort,
+  getRowEvidenceDocument,
   getRowEvidencePages,
   listBulkConfirmChanges,
   pluralize,
@@ -155,6 +160,8 @@ export type ReviewWorkspaceProps = {
   initialSubmission: SubmissionDetail;
   /** The oldest other pending baseline, for the completion card. */
   nextReview: NextReviewTarget | null;
+  /** resolveDrawingViewer(submission) on the server, or null when no package drawing was sent. */
+  drawingViewer: InitialPdfViewer | null;
   /** resolvePdfViewer(submission) on the server. */
   pdfViewer: InitialPdfViewer;
   /** Baselines only: buildBaselineRunHints(runs). */
@@ -228,6 +235,7 @@ function readBackHref() {
  */
 export function ReviewWorkspace({
   defaultSettings,
+  drawingViewer,
   initialSubmission,
   nextReview,
   pdfViewer,
@@ -435,6 +443,7 @@ export function ReviewWorkspace({
     const pages = getRowEvidencePages(extraction, initialRef);
 
     return {
+      document: getRowEvidenceDocument(extraction, initialRef),
       index: pages.length > 0 ? 0 : -1,
       key: rowKeyOf(initialRef),
       label: describeRowShort(extraction, initialRef),
@@ -442,6 +451,30 @@ export function ReviewWorkspace({
     };
   });
   const [pdfPage, setPdfPage] = useState<number | null>(() => pdfContext.pages[0] ?? null);
+  // A package drawing sent with the datasheet opens in the same pane, through
+  // the switch or a row whose evidence is in it.
+  const hasDrawing = drawingViewer !== null && Boolean(intake.drawing);
+  const shownDocument: EvidenceDocument =
+    hasDrawing && pdfContext.document === "drawing" ? "drawing" : "datasheet";
+  const drawingPdf = usePdfViewer({
+    active: (showPane || sheetOpen) && shownDocument === "drawing",
+    initial: drawingViewer ?? { reason: "not-retained", status: "unavailable" },
+    pdfDocument: "drawing",
+    services,
+    submissionId,
+  });
+  const shownViewer = shownDocument === "drawing" ? drawingPdf : viewer;
+  const shownFileName =
+    shownDocument === "drawing" && intake.drawing ? intake.drawing.fileName : source.fileName;
+  const documentSwitch: PdfDocumentSwitch | null = hasDrawing
+    ? {
+        onChange: (document) => {
+          setPdfContext({ document, index: -1, key: null, label: null, pages: [] });
+          setPdfPage(null);
+        },
+        value: shownDocument,
+      }
+    : null;
 
   // A #row-… deep link: activate that row (showing every row if a filter
   // hides it) and open the datasheet at its page. Adjusted during render, not
@@ -459,7 +492,13 @@ export function ReviewWorkspace({
     }
 
     if (hashRef && pages.length > 0) {
-      setPdfContext({ index: 0, key: hashKey, label: describeRowShort(extraction, hashRef), pages });
+      setPdfContext({
+        document: getRowEvidenceDocument(extraction, hashRef),
+        index: 0,
+        key: hashKey,
+        label: describeRowShort(extraction, hashRef),
+        pages,
+      });
       setPdfPage(pages[0]);
     }
   }
@@ -472,7 +511,12 @@ export function ReviewWorkspace({
       </>
     ) : null;
   const activePage = activeRef ? (getRowEvidencePages(extraction, activeRef)[0] ?? null) : pdfPage;
-  const newTabHref = services.pdfTabHref(submissionId, pdfPage, pdfAvailable);
+  const newTabHref = services.pdfTabHref(
+    submissionId,
+    pdfPage,
+    shownDocument === "drawing" ? true : pdfAvailable,
+    shownDocument,
+  );
 
   /* ------------------------------- Helpers --------------------------------- */
 
@@ -480,7 +524,13 @@ export function ReviewWorkspace({
     const pages = getRowEvidencePages(extraction, ref);
     const index = page === undefined ? (pages.length > 0 ? 0 : -1) : pages.indexOf(page);
 
-    return { index, key: rowKeyOf(ref), label: describeRowShort(extraction, ref), pages };
+    return {
+      document: getRowEvidenceDocument(extraction, ref),
+      index,
+      key: rowKeyOf(ref),
+      label: describeRowShort(extraction, ref),
+      pages,
+    };
   }
 
   function setShownPage(page: number | null, immediate: boolean) {
@@ -490,6 +540,7 @@ export function ReviewWorkspace({
     }
 
     viewer.ensureFresh();
+    drawingPdf.ensureFresh();
 
     if (immediate) {
       setPdfPage(page);
@@ -619,7 +670,10 @@ export function ReviewWorkspace({
       return;
     }
 
-    const href = services.pdfTabHref(submissionId, page, pdfAvailable);
+    const href =
+      context.document === "drawing" && hasDrawing
+        ? services.pdfTabHref(submissionId, page, true, "drawing")
+        : services.pdfTabHref(submissionId, page, pdfAvailable);
 
     if (href) {
       window.open(href, "_blank", "noopener");
@@ -1038,10 +1092,10 @@ export function ReviewWorkspace({
     setRerunOpen(true);
   }
 
-  function startRerun(settings: RerunSettings) {
+  function startRerun(settings: RerunSettings, drawing: DrawingInput | null = null) {
     setRerunOpen(false);
 
-    const label = formatRunLabel(settings);
+    const label = drawing || intake.drawing ? `${formatRunLabel(settings)} · drawing` : formatRunLabel(settings);
     const modelName = formatModelName(settings.model);
     const taskId = tasksApi.startTask<SubmissionDetail>({
       groupId: rootId,
@@ -1073,7 +1127,9 @@ export function ReviewWorkspace({
           },
         };
       },
-      run: (signal) => services.rerun(rootId, settings, signal),
+      // A run of a submission with a drawing starts from it, so the drawing carries over.
+      run: (signal) =>
+        services.rerun(intake.drawing ? submissionId : rootId, settings, signal, drawing),
     });
 
     if (taskId === null) {
@@ -1762,18 +1818,19 @@ export function ReviewWorkspace({
           <DatasheetPane
             className="sticky top-(--ui-header-height) hidden h-[calc(100dvh-var(--ui-header-height))] self-start xl:flex"
             context={pdfContext}
-            fileName={source.fileName}
+            documentSwitch={documentSwitch}
+            fileName={shownFileName}
             follow={follow}
             newTabHref={newTabHref}
             onCollapse={() => togglePaneFromButton(false)}
             onFollowChange={setFollow}
-            onRetry={viewer.retry}
+            onRetry={shownViewer.retry}
             onStep={stepContextPage}
-            originalUrl={viewer.originalUrl}
+            originalUrl={shownViewer.originalUrl}
             page={pdfPage}
             partNumber={partNumber}
-            revisionNote={revisionNote}
-            state={viewer.state}
+            revisionNote={shownDocument === "datasheet" ? revisionNote : null}
+            state={shownViewer.state}
           />
         ) : null}
       </div>
@@ -1812,6 +1869,8 @@ export function ReviewWorkspace({
         baselineReviewed={baselineReviewed}
         defaultModel={defaultSettings.model}
         defaultReasoningEffort={defaultSettings.reasoningEffort}
+        drawingFileName={intake.drawing?.fileName ?? null}
+        drawingSuggested={mentionsSeparateDrawing(extraction.review.notes)}
         onClose={() => setRerunOpen(false)}
         onStart={startRerun}
         open={rerunOpen}
@@ -1839,17 +1898,18 @@ export function ReviewWorkspace({
       {sheetAllowed ? (
         <DatasheetSheet
           context={pdfContext}
-          fileName={source.fileName}
+          documentSwitch={documentSwitch}
+          fileName={shownFileName}
           newTabHref={newTabHref}
           onClose={() => setSheetOpen(false)}
-          onRetry={viewer.retry}
+          onRetry={shownViewer.retry}
           onStep={stepContextPage}
           open={sheetOpen}
-          originalUrl={viewer.originalUrl}
+          originalUrl={shownViewer.originalUrl}
           page={pdfPage}
           partNumber={partNumber}
-          revisionNote={revisionNote}
-          state={viewer.state}
+          revisionNote={shownDocument === "datasheet" ? revisionNote : null}
+          state={shownViewer.state}
         />
       ) : null}
     </div>

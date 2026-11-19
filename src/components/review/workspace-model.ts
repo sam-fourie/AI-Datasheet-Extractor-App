@@ -10,7 +10,7 @@ import {
   formatReasoningEffortLabel,
   formatRunLabel,
 } from "@/lib/ai/provider-meta";
-import type { ProviderMeta } from "@/lib/package-categories";
+import type { EvidenceDocument, ProviderMeta } from "@/lib/package-categories";
 import { isScoredAgreement } from "@/lib/submissions/agreement";
 import { getPackageEvidencePage, normalizeEvidencePages } from "@/lib/submissions/evidence";
 import {
@@ -164,6 +164,20 @@ export function getRowEvidencePages(extraction: ExtractionSnapshot, ref: ReviewR
       );
     case "pin":
       return normalizeEvidencePages(extraction.pinRows[ref.pinIndex]?.evidencePages);
+  }
+}
+
+/** Which PDF a row's evidence pages are in: the package drawing, or the datasheet. */
+export function getRowEvidenceDocument(extraction: ExtractionSnapshot, ref: ReviewRowRef): EvidenceDocument {
+  switch (ref.kind) {
+    case "package":
+      return "datasheet";
+    case "measurement":
+      return extraction.fields.find((field) => field.field === ref.field)?.evidenceDocument === "drawing"
+        ? "drawing"
+        : "datasheet";
+    case "pin":
+      return extraction.pinRows[ref.pinIndex]?.evidenceDocument === "drawing" ? "drawing" : "datasheet";
   }
 }
 

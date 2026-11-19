@@ -156,6 +156,11 @@ export function buildSubmissionPdfObjectKey(submissionId: string, fileName: stri
   return `${SUBMISSION_OBJECT_PREFIX}/${submissionId}/${normalizePdfFileName(fileName)}`;
 }
 
+/** Where a submission's package drawing is kept: one per submission, beside its datasheet. */
+export function buildSubmissionDrawingObjectKey(submissionId: string, fileName: string) {
+  return `${SUBMISSION_OBJECT_PREFIX}/${submissionId}/drawing/${normalizePdfFileName(fileName)}`;
+}
+
 export function getR2BucketName() {
   return getR2Config().bucketName;
 }

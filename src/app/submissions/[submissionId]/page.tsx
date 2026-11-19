@@ -7,7 +7,7 @@ import { ReviewWorkspace } from "@/components/review/review-workspace";
 import { formatReviewPageTitle } from "@/components/review/workspace-model";
 import { getDefaultExtractionSettings } from "@/lib/ai/settings";
 import { buildBaselineRunHints } from "@/lib/submissions/agreement";
-import { resolvePdfViewer } from "@/lib/submissions/pdf-viewer";
+import { resolveDrawingViewer, resolvePdfViewer } from "@/lib/submissions/pdf-viewer";
 import {
   findNextPendingBaseline,
   getSubmissionDetail,
@@ -27,6 +27,23 @@ async function loadPdfViewer(submission: SubmissionDetail): Promise<InitialPdfVi
     return {
       message: error instanceof Error ? error.message : "The datasheet couldn't be loaded.",
       originalUrl: sourceMeta.kind === "url" ? sourceMeta.normalizedUrl : null,
+      status: "error",
+    };
+  }
+}
+
+/** The package drawing's viewer, or null when no drawing was sent with the datasheet. */
+async function loadDrawingViewer(submission: SubmissionDetail): Promise<InitialPdfViewer | null> {
+  if (!submission.intake.drawing) {
+    return null;
+  }
+
+  try {
+    return await resolveDrawingViewer(submission);
+  } catch (error) {
+    return {
+      message: error instanceof Error ? error.message : "The package drawing couldn't be loaded.",
+      originalUrl: null,
       status: "error",
     };
   }
@@ -54,9 +71,10 @@ export default async function SubmissionReviewPage(
   }
 
   const rootId = submission.comparison?.baselineSubmissionId ?? submission.submissionId;
-  const [runs, pdfViewer, nextReview, defaults] = await Promise.all([
+  const [runs, pdfViewer, drawingViewer, nextReview, defaults] = await Promise.all([
     listSubmissionModelRuns(rootId),
     loadPdfViewer(submission),
+    loadDrawingViewer(submission),
     findNextPendingBaseline(submission.submissionId).catch(() => null),
     Promise.resolve(getDefaultExtractionSettings()),
   ]);
@@ -64,6 +82,7 @@ export default async function SubmissionReviewPage(
   return (
     <ReviewWorkspace
       defaultSettings={{ model: defaults.model, reasoningEffort: defaults.reasoningEffort }}
+      drawingViewer={drawingViewer}
       initialSubmission={submission}
       key={submission.submissionId}
       nextReview={nextReview}

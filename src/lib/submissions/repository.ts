@@ -1007,7 +1007,7 @@ export async function deleteSubmissionWithRuns(
   // Repeat once or twice so a run that lands mid-delete is not left orphaned.
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const targets = await collection
-      .find(filter, { projection: { "intake.sourceMeta": 1 } })
+      .find(filter, { projection: { "intake.drawing": 1, "intake.sourceMeta": 1 } })
       .toArray();
 
     if (targets.length === 0) {
@@ -1028,6 +1028,11 @@ export async function deleteSubmissionWithRuns(
         !sourceMeta.objectKey.startsWith(URL_CACHE_OBJECT_PREFIX)
       ) {
         uploadObjectKeys.add(sourceMeta.objectKey);
+      }
+
+      // A package drawing is always kept per submission.
+      if (target.intake.drawing?.objectKey) {
+        uploadObjectKeys.add(target.intake.drawing.objectKey);
       }
     }
 

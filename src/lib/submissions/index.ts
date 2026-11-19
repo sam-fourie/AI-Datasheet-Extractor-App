@@ -206,5 +206,6 @@ export type {
   SubmissionSourceMeta,
   SubmissionSummary,
   UploadSourceMeta,
+  DrawingSourceMeta,
   UrlSourceMeta,
 } from "./types";

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import type { EvidenceDocument } from "@/lib/package-categories";
 import { getUrlHost } from "@/lib/submissions/source";
 
 import type {
@@ -53,11 +54,14 @@ function isExpiringSoon(viewer: ReadyPdfViewer) {
  */
 export function usePdfViewer({
   active,
+  pdfDocument,
   initial,
   services,
   submissionId,
 }: {
   active: boolean;
+  /** Which PDF: the datasheet (default) or the package drawing. */
+  pdfDocument?: EvidenceDocument;
   initial: InitialPdfViewer;
   services: Pick<ReviewWorkspaceServices, "ensurePdfViewer">;
   submissionId: string;
@@ -83,7 +87,7 @@ export function usePdfViewer({
 
     let cancelled = false;
 
-    services.ensurePdfViewer(submissionId).then(
+    services.ensurePdfViewer(submissionId, pdfDocument).then(
       (next) => {
         if (!cancelled) {
           setResult(next);
@@ -103,7 +107,7 @@ export function usePdfViewer({
     return () => {
       cancelled = true;
     };
-  }, [attempt, needsFetch, originalUrl, services, submissionId]);
+  }, [attempt, needsFetch, pdfDocument, originalUrl, services, submissionId]);
 
   let state: PdfPaneState;
 
@@ -134,7 +138,7 @@ export function usePdfViewer({
   const readyViewer = state.status === "ready" ? state.viewer : null;
 
   function refresh() {
-    services.ensurePdfViewer(submissionId).then(
+    services.ensurePdfViewer(submissionId, pdfDocument).then(
       (next) => {
         if (next.status === "ready") {
           setResult(next);
@@ -155,7 +159,7 @@ export function usePdfViewer({
 
     function handleVisibility() {
       if (document.visibilityState === "visible" && Date.parse(viewer.expiresAt) <= Date.now()) {
-        services.ensurePdfViewer(submissionId).then(
+        services.ensurePdfViewer(submissionId, pdfDocument).then(
           (next) => {
             if (next.status === "ready") {
               setResult(next);
@@ -169,7 +173,7 @@ export function usePdfViewer({
     document.addEventListener("visibilitychange", handleVisibility);
 
     return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [readyViewer, services, submissionId]);
+  }, [pdfDocument, readyViewer, services, submissionId]);
 
   return {
     originalUrl,

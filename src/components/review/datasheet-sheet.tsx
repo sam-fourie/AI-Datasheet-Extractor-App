@@ -5,11 +5,19 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { Dialog, IconButton, LinkButton } from "@/components/ui";
 
-import { DatasheetViewerBody, formatPdfContext, type PdfContext } from "./datasheet-pane";
+import {
+  DatasheetViewerBody,
+  formatPdfContext,
+  PdfDocumentSwitchRow,
+  type PdfContext,
+  type PdfDocumentSwitch,
+} from "./datasheet-pane";
 import type { PdfPaneState } from "./use-pdf-viewer";
 
 export type DatasheetSheetProps = {
   context: PdfContext | null;
+  /** Null when the submission has no package drawing. */
+  documentSwitch: PdfDocumentSwitch | null;
   fileName: string;
   newTabHref: string | null;
   onClose: () => void;
@@ -30,6 +38,7 @@ export type DatasheetSheetProps = {
  */
 export function DatasheetSheet({
   context,
+  documentSwitch,
   fileName,
   newTabHref,
   onClose,
@@ -57,7 +66,7 @@ export function DatasheetSheet({
       onClose={onClose}
       open={open}
       size="lg"
-      title="Datasheet"
+      title={documentSwitch?.value === "drawing" ? "Package drawing" : "Datasheet"}
       variant="sheet-right"
     >
       <div className="-mx-5 -mt-4 flex h-[calc(100%+2.25rem)] min-h-[60dvh] flex-col">
@@ -86,6 +95,7 @@ export function DatasheetSheet({
             </LinkButton>
           ) : null}
         </div>
+        <PdfDocumentSwitchRow className="px-4" documentSwitch={documentSwitch} />
         {revisionNote && state.status === "ready" ? (
           <p className="shrink-0 border-b border-border-subtle px-4 py-1.5 text-caption text-text-muted">
             {revisionNote}

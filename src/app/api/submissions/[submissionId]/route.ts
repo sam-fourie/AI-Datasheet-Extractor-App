@@ -121,6 +121,10 @@ export async function DELETE(
       await deleteObject(existingSubmission.intake.sourceMeta.objectKey);
     }
 
+    if (existingSubmission.intake.drawing) {
+      await deleteObject(existingSubmission.intake.drawing.objectKey);
+    }
+
     const didDelete = await deleteSubmission(submissionId);
 
     if (!didDelete) {

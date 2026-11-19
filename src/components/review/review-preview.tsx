@@ -278,6 +278,7 @@ export function ReviewPreview({ fixture, pdf, saveFails }: ReviewPreviewProps) {
             ? { partNumber: "MMBT3904LT1G", submissionId: smallBaselineFixture.submissionId }
             : { partNumber: "CY8C5668AXI-LP010", submissionId: largeBaselineFixture.submissionId }
         }
+        drawingViewer={submission.intake.drawing ? initialViewer : null}
         pdfViewer={initialViewer}
         runHints={submission.comparison ? null : buildBaselineRunHints(runs)}
         runs={runs}

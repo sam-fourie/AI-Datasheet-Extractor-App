@@ -30,7 +30,23 @@ export type UrlSourceMeta = {
 
 export type SubmissionSourceMeta = UploadSourceMeta | UrlSourceMeta;
 
+/**
+ * The package drawing sent with the datasheet: a second PDF, always kept in
+ * R2 under `datasheets/submissions/{id}/drawing/`, whether it was uploaded or
+ * downloaded from `sourceUrl`.
+ */
+export type DrawingSourceMeta = {
+  checksumSha256: string;
+  fileName: string;
+  objectKey: string;
+  sizeBytes: number;
+  /** The vendor link it was downloaded from; absent for an upload. */
+  sourceUrl?: string;
+};
+
 export type SubmissionIntakeSnapshot = {
+  /** Present when a package drawing was sent with the datasheet (November 2026 on). */
+  drawing?: DrawingSourceMeta;
   packageCategory: PackageCategory;
   partNumber: string;
   requestedFields: string[];

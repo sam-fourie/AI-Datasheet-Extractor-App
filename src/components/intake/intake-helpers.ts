@@ -4,6 +4,7 @@ import type { ExtractionErrorCode } from "@/lib/extractions";
 import { formatBytes } from "@/lib/format";
 import type { PackageCategory } from "@/lib/package-categories";
 import { MAX_PDF_BYTES, PDF_MIME_TYPE } from "@/lib/pdf";
+import type { DrawingInput } from "@/lib/drawing-upload";
 
 /**
  * Client-safe helpers and types shared by the intake components. Nothing in
@@ -27,6 +28,8 @@ export type ExtractionSourceInput =
   | { kind: "url"; url: string };
 
 export type ExtractionRequestInput = {
+  /** The optional package drawing, uploaded inside the extraction task. */
+  drawing?: DrawingInput | null;
   model: OpenAIModelId;
   packageCategory: PackageCategory;
   partNumber: string;

@@ -484,7 +484,8 @@ const largeExtraction: ExtractionSnapshot = {
   fields: [
     measurement("Body Length", "13.80 mm to 14.20 mm", "high", [112]),
     measurement("Body Width", "13.80 mm to 14.20 mm", "high", [112]),
-    measurement("Height", "1.20 mm max", "high", [112]),
+    // From the package drawing sent with the datasheet (page 1 of the drawing).
+    { ...measurement("Height", "1.20 mm max", "high", [1]), evidenceDocument: "drawing" },
     measurement("Left/Right Pins", "25", "high", [9, 112]),
     measurement("Pin Length", "0.45 mm to 0.75 mm", "medium", [112]),
     measurement("Pin Pitch", "0.50 mm", "high", [112]),
@@ -517,6 +518,12 @@ export const largeBaselineFixture: SubmissionDetail = buildDetail({
   createdAt: "2026-09-24T16:40:05.000Z",
   extraction: largeExtraction,
   intake: {
+    drawing: {
+      checksumSha256: "9c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d",
+      fileName: "001-91447_100-TQFP.pdf",
+      objectKey: "datasheets/submissions/fx-cy8c5668-baseline/drawing/001-91447_100-TQFP.pdf",
+      sizeBytes: 182_420,
+    },
     packageCategory: "Quad Flat Packages",
     partNumber: "CY8C5668AXI-LP010",
     requestedFields: largeExtraction.fields.map((field) => field.field),

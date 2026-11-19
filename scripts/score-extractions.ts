@@ -15,10 +15,13 @@
  *   npm run score -- --prompt v1 --part SS25-LTP      # one datasheet with the old prompt
  *   npm run score -- --compare .eval/a.json .eval/b.json
  *   npm run score -- --rescore .eval/a.json            # score saved answers again (free)
+ *   npm run score -- --prompt v2 --part MAX22915AFG+T --drawing MAX22915AFG+T=~/outlines/21-100765.pdf
  *
  * Options: --prompt v1|v2, --model <id>, --effort <effort>, --part <part
  * number> (repeatable), --limit N, --concurrency N (default 3),
- * --include-doubtful, --out <file>.
+ * --include-doubtful, --out <file>, --drawing <part number>=<local PDF>
+ * (repeatable; sends that package drawing with the datasheet). A baseline
+ * that was extracted with a drawing always sends its stored drawing.
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -65,6 +68,8 @@ const DOUBTFUL_PARTS = new Set(["NE555DR", "CDSOT23-T08LC-Q", "LMG1025QDEETQ1", 
 
 type Options = {
   compare: [string, string] | null;
+  /** Local package drawings by lower-cased part number. */
+  drawings: Map<string, string>;
   rescore: string | null;
   concurrency: number;
   effort: string | undefined;
@@ -117,6 +122,7 @@ function readOptions(argv: string[]): Options {
   const options: Options = {
     compare: null,
     concurrency: 3,
+    drawings: new Map(),
     effort: undefined,
     includeDoubtful: false,
     limit: null,
@@ -139,6 +145,20 @@ function readOptions(argv: string[]): Options {
       case "--concurrency":
         options.concurrency = Math.max(1, Number.parseInt(next(), 10) || 1);
         break;
+      case "--drawing": {
+        const value = next();
+        const separator = value.indexOf("=");
+
+        if (separator < 1) {
+          fail("--drawing needs <part number>=<path to PDF>.");
+        }
+
+        options.drawings.set(
+          value.slice(0, separator).trim().toLowerCase(),
+          value.slice(separator + 1).trim().replace(/^~(?=\/)/, process.env.HOME ?? "~"),
+        );
+        break;
+      }
       case "--effort":
         options.effort = next();
         break;
@@ -268,7 +288,15 @@ async function scoreSheet(
       return { ...base, costUsd: null, error: pdf.reason, latencyMs: null, status: "skipped" };
     }
 
+    const localDrawing = options.drawings.get(baseline.intake.partNumber.toLowerCase());
+    const storedDrawing = baseline.intake.drawing;
+    const drawing = localDrawing
+      ? { pdfBytes: new Uint8Array(readFileSync(localDrawing)), pdfFileName: path.basename(localDrawing) }
+      : storedDrawing
+        ? { pdfBytes: await downloadObjectBytes(storedDrawing.objectKey), pdfFileName: storedDrawing.fileName }
+        : null;
     const result = await extractDatasheet({
+      ...(drawing ? { drawing } : {}),
       model: settings.model as Parameters<typeof extractDatasheet>[0]["model"],
       packageCategory: baseline.intake.packageCategory,
       partNumber: baseline.intake.partNumber,

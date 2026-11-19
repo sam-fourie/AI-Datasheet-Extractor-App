@@ -23,17 +23,21 @@ import {
   EmptyState,
   IconButton,
   LinkButton,
+  SegmentedControl,
   Spinner,
   Switch,
   Tooltip,
   cn,
 } from "@/components/ui";
+import type { EvidenceDocument } from "@/lib/package-categories";
 
 import { DATASHEET_HIDE_BUTTON_ID } from "./types";
 import type { PdfPaneState } from "./use-pdf-viewer";
 
 /** What the datasheet is showing: the row it follows and that row's evidence pages. */
 export type PdfContext = {
+  /** Which PDF the pages are in. Absent means the datasheet. */
+  document?: EvidenceDocument;
   /** "Body Length", "Pin 8, VCC", "Package", or null for a page shown on its own. */
   label: string | null;
   /** The row's evidence pages ([ / ] step through them). */
@@ -47,6 +51,36 @@ export function formatPdfContext(page: number | null, context: PdfContext | null
   const parts = [page ? `p. ${page}` : null, context?.label ?? null].filter(Boolean);
 
   return parts.join(" · ");
+}
+
+/** The datasheet/drawing switch, shown when a package drawing was sent with the datasheet. */
+export type PdfDocumentSwitch = {
+  onChange: (document: EvidenceDocument) => void;
+  value: EvidenceDocument;
+};
+
+const DOCUMENT_OPTIONS = [
+  { label: "Datasheet", value: "datasheet" },
+  { label: "Package drawing", value: "drawing" },
+] satisfies Array<{ label: string; value: EvidenceDocument }>;
+
+/** A slim row with the switch, under the pane or sheet toolbar. */
+export function PdfDocumentSwitchRow({ className, documentSwitch }: { className?: string; documentSwitch: PdfDocumentSwitch | null }) {
+  if (!documentSwitch) {
+    return null;
+  }
+
+  return (
+    <div className={cn("flex shrink-0 items-center border-b border-border-subtle bg-surface-subtle px-3 py-1.5", className)}>
+      <SegmentedControl
+        aria-label="Which PDF to show"
+        onChange={documentSwitch.onChange}
+        options={DOCUMENT_OPTIONS}
+        size="sm"
+        value={documentSwitch.value}
+      />
+    </div>
+  );
 }
 
 /** Stop showing the loading cover if the viewer never reports load. */
@@ -213,6 +247,8 @@ function LoadingState({ className }: { className?: string }) {
 export type DatasheetPaneProps = {
   className?: string;
   context: PdfContext | null;
+  /** Null when the submission has no package drawing. */
+  documentSwitch: PdfDocumentSwitch | null;
   fileName: string;
   follow: boolean;
   newTabHref: string | null;
@@ -236,6 +272,7 @@ export type DatasheetPaneProps = {
 export function DatasheetPane({
   className,
   context,
+  documentSwitch,
   fileName,
   follow,
   newTabHref,
@@ -371,6 +408,7 @@ export function DatasheetPane({
           tooltipSide="left"
         />
       </div>
+      <PdfDocumentSwitchRow documentSwitch={documentSwitch} />
       {revisionNote && state.status === "ready" ? (
         <p className="shrink-0 border-b border-border-subtle bg-surface-subtle px-3 py-1.5 text-caption text-text-muted">
           {revisionNote}

@@ -63,7 +63,22 @@ const extractionSchema = z.object({
   }),
 });
 
-type ParsedExtraction = z.infer<typeof extractionSchema>;
+/** With a package drawing attached, every row also says which file its evidence pages are in. */
+const evidenceFileSchema = z.enum(["datasheet", "drawing"]);
+
+const drawingExtractionSchema = extractionSchema.extend({
+  measurements: z.array(extractedMeasurementSchema.extend({ evidenceFile: evidenceFileSchema })),
+  pins: z.array(extractedPinSchema.extend({ evidenceFile: evidenceFileSchema })),
+});
+
+type ParsedExtraction =
+  | z.infer<typeof extractionSchema>
+  | z.infer<typeof drawingExtractionSchema>;
+
+/** "drawing" when the row's evidence pages are in the package drawing. */
+function evidenceDocumentOf(row: object): { evidenceDocument?: "drawing" } {
+  return "evidenceFile" in row && row.evidenceFile === "drawing" ? { evidenceDocument: "drawing" } : {};
+}
 
 let openAIClient: OpenAI | null = null;
 
@@ -113,6 +128,7 @@ function normalizeMeasurements(
 
     return {
       confidence: normalizeConfidence(measurement.confidence),
+      ...evidenceDocumentOf(measurement),
       evidencePages: normalizeEvidencePages(measurement.evidencePages),
       field,
       status: measurement.status,
@@ -125,6 +141,7 @@ function normalizePins(pins: ParsedExtraction["pins"]): ExtractionPin[] {
   return pins
     .map((pin) => ({
       confidence: normalizeConfidence(pin.confidence),
+      ...evidenceDocumentOf(pin),
       evidencePages: normalizeEvidencePages(pin.evidencePages),
       pinName: pin.pinName.trim(),
       pinNumber: pin.pinNumber.trim(),
@@ -185,15 +202,26 @@ function buildPromptV1(input: ExtractionInput) {
   ].join("\n");
 }
 
+/** Added to either prompt when a package drawing is attached as the second file. */
+export const DRAWING_PROMPT = [
+  "",
+  "Two PDF files are attached: first the datasheet, then the package drawing (the outline with the package dimensions) for this part.",
+  "- Take package dimensions from the drawing when the datasheet doesn't give them, and from whichever shows them more completely when both do.",
+  "- Take pin names and numbers from the datasheet; use the drawing only for the pad and pin layout.",
+  "- For every measurement and pin, set evidenceFile to \"datasheet\" or \"drawing\": the file its evidence pages are in. Evidence pages are 1-based physical page indexes within that file.",
+].join("\n");
+
 function buildMessages(input: ExtractionInput, version: ExtractionPromptVersion) {
+  const drawing = input.drawing ? DRAWING_PROMPT : "";
+
   return version === "v2"
     ? {
         developer: RULEBOOK_DEVELOPER_MESSAGE,
-        prompt: buildRulebookPrompt(input),
+        prompt: buildRulebookPrompt(input) + drawing,
       }
     : {
         developer: V1_DEVELOPER_MESSAGE,
-        prompt: buildPromptV1(input),
+        prompt: buildPromptV1(input) + drawing,
       };
 }
 
@@ -273,6 +301,15 @@ export class OpenAIExtractionProvider implements AiProvider {
     const promptVersion = input.promptVersion ?? DEFAULT_EXTRACTION_PROMPT_VERSION;
     const messages = buildMessages(input, promptVersion);
     const base64Pdf = Buffer.from(input.pdfBytes).toString("base64");
+    const drawingFile = input.drawing
+      ? [
+          {
+            file_data: `data:application/pdf;base64,${Buffer.from(input.drawing.pdfBytes).toString("base64")}`,
+            filename: input.drawing.pdfFileName,
+            type: "input_file" as const,
+          },
+        ]
+      : [];
     const deadlineSignal = AbortSignal.timeout(EXTRACTION_REQUEST_TIMEOUT_MS);
     const requestSignal = input.signal
       ? AbortSignal.any([input.signal, deadlineSignal])
@@ -302,11 +339,14 @@ export class OpenAIExtractionProvider implements AiProvider {
                   filename: input.pdfFileName,
                   file_data: `data:application/pdf;base64,${base64Pdf}`,
                 },
+                ...drawingFile,
               ],
             },
           ],
           text: {
-            format: zodTextFormat(extractionSchema, "datasheet_extraction"),
+            format: input.drawing
+              ? zodTextFormat(drawingExtractionSchema, "datasheet_extraction")
+              : zodTextFormat(extractionSchema, "datasheet_extraction"),
             verbosity: "low",
           },
         },

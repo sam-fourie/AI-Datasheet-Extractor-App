@@ -15,6 +15,14 @@ import {
   resolveExtractionSettings,
   type ExtractionSettings,
 } from "@/lib/ai/settings";
+import {
+  deleteDrawingObjects,
+  DrawingSourceError,
+  loadDrawing,
+  parseDrawingPayload,
+  storeDrawing,
+  type LoadedDrawing,
+} from "@/lib/drawing-source";
 import type {
   ExtractionErrorCode,
   ExtractionErrorResponse,
@@ -176,9 +184,12 @@ function parseExtractionPayload(payload: unknown): ParsedExtractionRequest {
   assertPackageCategory(packageCategoryValue);
 
   const settings = resolveRequestedExtractionSettings(value);
+  const drawingPayload = parseDrawingPayload(value.drawing);
+  const drawing = drawingPayload ? { drawing: drawingPayload } : {};
 
   if (sourceMode === "upload") {
     return {
+      ...drawing,
       model: settings.model,
       packageCategory: packageCategoryValue,
       partNumber,
@@ -189,6 +200,7 @@ function parseExtractionPayload(payload: unknown): ParsedExtractionRequest {
   }
 
   return {
+    ...drawing,
     datasheetUrl: getStringValue(value.datasheetUrl, "datasheetUrl"),
     model: settings.model,
     packageCategory: packageCategoryValue,
@@ -312,6 +324,10 @@ function toRouteError(error: unknown): RouteError {
     return new RouteError(error.message, error.status, codeForPdfSourceError(error));
   }
 
+  if (error instanceof DrawingSourceError) {
+    return new RouteError(error.message, error.status, error.code);
+  }
+
   if (error instanceof ExtractionTimeoutError) {
     return new RouteError(error.message, 504, "timeout");
   }
@@ -360,6 +376,8 @@ export async function POST(request: Request) {
 
   let pendingObjectKey: string | null = null;
   let permanentObjectKey: string | null = null;
+  let pendingDrawingKey: string | null = null;
+  let permanentDrawingKey: string | null = null;
   // Set while the model call runs: model-side failures keep the pending upload (addendum T).
   let inModelStage = false;
 
@@ -387,6 +405,12 @@ export async function POST(request: Request) {
       pendingObjectKey = pdfSource.cleanupObjectKey;
     }
 
+    const drawing: LoadedDrawing | null = payload.drawing
+      ? await loadDrawing(payload.drawing, request.signal)
+      : null;
+
+    pendingDrawingKey = drawing?.pendingObjectKey ?? null;
+
     if (request.signal.aborted) {
       throw new ExtractionCancelledError();
     }
@@ -394,6 +418,9 @@ export async function POST(request: Request) {
     inModelStage = true;
 
     const extraction = await extractDatasheet({
+      ...(drawing
+        ? { drawing: { pdfBytes: drawing.pdfBytes, pdfFileName: normalizePdfFileName(drawing.fileName) } }
+        : {}),
       model: payload.model,
       packageCategory: payload.packageCategory,
       partNumber: payload.partNumber,
@@ -461,6 +488,15 @@ export async function POST(request: Request) {
       };
     }
 
+    if (drawing) {
+      submissionId ??= new ObjectId().toHexString();
+
+      const drawingMeta = await storeDrawing(submissionId, drawing);
+
+      permanentDrawingKey = drawingMeta.objectKey;
+      intakeSnapshot = { ...intakeSnapshot, drawing: drawingMeta };
+    }
+
     // Last point of no return: a cancel that arrives after this still saves (spec copy says so).
     if (request.signal.aborted) {
       throw new ExtractionCancelledError();
@@ -474,6 +510,7 @@ export async function POST(request: Request) {
     });
 
     permanentObjectKey = null;
+    permanentDrawingKey = null;
 
     if (urlCacheWrite) {
       const { contentSha256, normalizedUrl } = urlCacheWrite;
@@ -494,15 +531,22 @@ export async function POST(request: Request) {
       pendingObjectKey = null;
     }
 
+    await deleteDrawingObjects([pendingDrawingKey]);
+
     return Response.json(submission satisfies SubmissionDetail);
   } catch (error) {
     const routeError = toRouteError(error);
     const keepPendingUpload =
       inModelStage && pendingObjectKey !== null && routeError.code !== "cancelled";
 
+    // An uploaded drawing is kept for "Try again" on the same terms as the datasheet.
+    const keepPendingDrawing = inModelStage && routeError.code !== "cancelled";
+
     await cleanupUploadedObjects([
       keepPendingUpload ? null : pendingObjectKey,
       permanentObjectKey,
+      keepPendingDrawing ? null : pendingDrawingKey,
+      permanentDrawingKey,
     ]);
 
     return errorResponse(routeError, keepPendingUpload);

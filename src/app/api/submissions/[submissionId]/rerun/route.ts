@@ -9,6 +9,14 @@ import {
   ExtractionSettingsError,
   resolveExtractionSettings,
 } from "@/lib/ai/settings";
+import {
+  deleteDrawingObjects,
+  DrawingSourceError,
+  loadDrawing,
+  loadStoredDrawing,
+  parseDrawingPayload,
+  storeDrawing,
+} from "@/lib/drawing-source";
 import { MongoConfigError } from "@/lib/mongodb";
 import { looksLikePdf, normalizePdfFileName } from "@/lib/pdf";
 import {
@@ -70,6 +78,10 @@ function toRouteError(error: unknown) {
 
   if (error instanceof PdfSourceError) {
     return error;
+  }
+
+  if (error instanceof DrawingSourceError) {
+    return new RouteError(error.message, error.status);
   }
 
   if (error instanceof ExtractionTimeoutError) {
@@ -223,6 +235,7 @@ export async function POST(
   }
 
   let copiedObjectKey: string | null = null;
+  let storedDrawingKey: string | null = null;
 
   try {
     if (!process.env.OPENAI_API_KEY) {
@@ -236,9 +249,9 @@ export async function POST(
     }
 
     const body = await request.json().catch(() => null);
-    const settings = resolveRequestedExtractionSettings(
-      body && typeof body === "object" ? (body as Record<string, unknown>) : {},
-    );
+    const bodyRecord = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+    const settings = resolveRequestedExtractionSettings(bodyRecord);
+    const drawingPayload = parseDrawingPayload(bodyRecord.drawing);
     const sourceSubmission = await getSubmissionDetail(submissionId);
 
     if (!sourceSubmission) {
@@ -253,7 +266,16 @@ export async function POST(
       : null;
     const baseline = rootSubmission ?? sourceSubmission;
     const pdf = await readSubmissionPdf(sourceSubmission);
+    // A new drawing for this run, or the one the source submission was run with.
+    const drawing = drawingPayload
+      ? await loadDrawing(drawingPayload, request.signal)
+      : sourceSubmission.intake.drawing
+        ? await loadStoredDrawing(sourceSubmission.intake.drawing)
+        : null;
     const extraction = await extractDatasheet({
+      ...(drawing
+        ? { drawing: { pdfBytes: drawing.pdfBytes, pdfFileName: normalizePdfFileName(drawing.fileName) } }
+        : {}),
       model: settings.model,
       packageCategory: baseline.intake.packageCategory,
       partNumber: baseline.intake.partNumber,
@@ -298,6 +320,15 @@ export async function POST(
       };
     }
 
+    if (drawing) {
+      const drawingMeta = await storeDrawing(newSubmissionId, drawing);
+
+      storedDrawingKey = drawingMeta.objectKey;
+      intake = { ...intake, drawing: drawingMeta };
+    } else {
+      delete intake.drawing;
+    }
+
     const submission = await createSubmission({
       comparison: {
         baselineSubmissionId: baseline.submissionId,
@@ -309,6 +340,8 @@ export async function POST(
     });
 
     copiedObjectKey = null;
+    storedDrawingKey = null;
+    await deleteDrawingObjects([drawing?.pendingObjectKey]);
 
     if (pdf.cacheWrites.length > 0) {
       const { cacheWrites, pdfBytes } = pdf;
@@ -333,6 +366,8 @@ export async function POST(
         // Bucket lifecycle rules cover orphaned copies.
       }
     }
+
+    await deleteDrawingObjects([storedDrawingKey]);
 
     const routeError = toRouteError(error);
 

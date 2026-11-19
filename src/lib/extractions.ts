@@ -8,7 +8,17 @@ export type UploadedPdfPayload = {
   sizeBytes: number;
 };
 
+/**
+ * The optional package drawing (a second PDF with the package outline), for
+ * datasheets that refer to a separate drawing. Uploaded the same way as the
+ * datasheet (POST /api/extractions/upload-url, then a PUT), or a link.
+ */
+export type DrawingPayload =
+  | { kind: "upload"; uploadedPdf: UploadedPdfPayload }
+  | { kind: "url"; url: string };
+
 export type ExtractionUploadRequest = {
+  drawing?: DrawingPayload;
   model?: OpenAIModelId;
   packageCategory: PackageCategory;
   partNumber: string;
@@ -19,6 +29,7 @@ export type ExtractionUploadRequest = {
 
 export type ExtractionUrlRequest = {
   datasheetUrl: string;
+  drawing?: DrawingPayload;
   model?: OpenAIModelId;
   packageCategory: PackageCategory;
   partNumber: string;
@@ -46,6 +57,8 @@ export type UploadUrlResponse = {
 };
 
 export type RerunRequestPayload = {
+  /** A drawing for this run. Without one, the run keeps the drawing of the submission it was started from. */
+  drawing?: DrawingPayload;
   model?: OpenAIModelId;
   reasoningEffort?: OpenAIReasoningEffort;
 };
